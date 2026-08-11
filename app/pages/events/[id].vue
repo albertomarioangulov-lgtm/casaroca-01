@@ -184,6 +184,23 @@ const checkInGroups = computed(() => {
 // Pestaña activa del selector de salones
 const activeTab = ref<number>(0)
 
+// ¿Hay una búsqueda activa?
+const hasActiveSearch = computed(() => (search.value || '').trim().length > 0)
+
+// Auto-navegar al primer tab con items cuando el tab actual está vacío.
+// Esto evita que la tabla salga en blanco (por ejemplo, si los check-ins
+// están en "Sin grupo" o en otro salón). Si el tab actual tiene items,
+// se respeta la selección del usuario.
+watch(checkInGroups, (groups) => {
+  const currentGroup = groups[activeTab.value]
+  const currentHasItems = !!currentGroup && currentGroup.items.length > 0
+  if (currentHasItems) return
+  const firstIdx = groups.findIndex((g) => g.items.length > 0)
+  if (firstIdx !== -1 && firstIdx !== activeTab.value) {
+    activeTab.value = firstIdx
+  }
+})
+
 // Items visibles según la pestaña/salón seleccionada
 const activeGroupItems = computed(() => {
   const groups = checkInGroups.value
@@ -485,11 +502,23 @@ onBeforeUnmount(() => {
         v-for="(group, index) in checkInGroups"
         :key="index"
         :value="index"
+        :class="{ 'tab-no-matches': hasActiveSearch && group.items.length === 0 }"
       >
-        {{ group.name }}
-        <span v-if="group.minAge !== null && group.maxAge !== null" class="ml-1 text-caption text-medium-emphasis">
-          ({{ group.minAge }}-{{ group.maxAge }})
+        <span>
+          {{ group.name }}
+          <span v-if="group.minAge !== null && group.maxAge !== null" class="ml-1 text-caption text-medium-emphasis">
+            ({{ group.minAge }}-{{ group.maxAge }})
+          </span>
         </span>
+        <v-chip
+          v-if="hasActiveSearch && group.items.length > 0"
+          size="x-small"
+          color="primary"
+          variant="flat"
+          class="ml-2"
+        >
+          {{ group.items.length }}
+        </v-chip>
         <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
           {{ group.inside }}
         </v-chip>
@@ -559,7 +588,7 @@ onBeforeUnmount(() => {
       </template>
       <template #no-data>
         <div class="text-center py-6">
-          No hay niños registrados en este evento.
+          {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : 'No hay niños registrados en este evento.' }}
         </div>
       </template>
       <template #loading>
@@ -668,3 +697,10 @@ onBeforeUnmount(() => {
     <v-alert type="warning" title="Acceso denegado" text="No tienes permisos para acceder a esta página." />
   </template>
 </template>
+
+<style scoped>
+/* Atenuar los tabs sin coincidencias mientras hay una búsqueda activa */
+.tab-no-matches {
+  opacity: 0.4;
+}
+</style>
