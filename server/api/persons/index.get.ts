@@ -92,9 +92,82 @@ export default defineEventHandler(async (event) => {
     .limit(limit)
     .lean()
 
-  const items = await Promise.all(persons.map(async (p) => {
+  // ===== Consultas globales (evita N+1 por persona) =====
+  const foundIds = persons.map((p) => p._id?.toString?.() ?? '').filter(Boolean)
+
+  // Membresías activas de todas las personas encontradas (1 sola consulta)
+  const memberships = await MinistryMembership.find({
+    person: { $in: foundIds },
+    status: 'active',
+  })
+    .populate('ministry', 'name code color icon')
+    .lean()
+
+  const membershipsByPerson = new Map<string, any[]>()
+  for (const m of memberships as any[]) {
+    const pid = m.person?.toString?.() ?? ''
+    if (!pid) continue
+    if (!membershipsByPerson.has(pid)) membershipsByPerson.set(pid, [])
+    membershipsByPerson.get(pid)!.push(m)
+  }
+
+  // Familias de todas las personas (1 sola consulta con populate)
+  let familiesByPerson = new Map<string, any[]>()
+  if (includeRelatedKids) {
+    const allFamilies = await Family.find({ 'members.person': { $in: foundIds } })
+      .populate('members.person', 'name birthDate gender')
+      .lean()
+    familiesByPerson = new Map<string, any[]>()
+    for (const fam of allFamilies as any[]) {
+      for (const member of fam.members ?? []) {
+        const pid = member.person?._id?.toString?.() ?? member.person?.toString?.() ?? ''
+        if (!pid) continue
+        if (!familiesByPerson.has(pid)) familiesByPerson.set(pid, [])
+        familiesByPerson.get(pid)!.push(fam)
+      }
+    }
+  }
+
+  // Relaciones de todas las personas (1 sola consulta con populate)
+  let relationshipsByPerson = new Map<string, any[]>()
+  if (includeRelatedKids) {
+    const relationships = await Relationship.find({
+      $or: [{ person: { $in: foundIds } }, { relatedPerson: { $in: foundIds } }],
+    })
+      .populate('relatedPerson', 'name birthDate gender')
+      .populate('person', 'name birthDate gender')
+      .lean()
+
+    relationshipsByPerson = new Map<string, any[]>()
+    for (const rel of relationships as any[]) {
+      const origin = rel.person?._id?.toString?.() ?? rel.person?.toString?.() ?? ''
+      const target = rel.relatedPerson?._id?.toString?.() ?? rel.relatedPerson?.toString?.() ?? ''
+      if (!origin && !target) continue
+      // Indexar por persona origen
+      if (origin) {
+        if (!relationshipsByPerson.has(origin)) relationshipsByPerson.set(origin, [])
+        relationshipsByPerson.get(origin)!.push(rel)
+      }
+      // Indexar por persona destino (relación inversa: alguien declaró relación con esta persona)
+      if (target && target !== origin) {
+        const inverseRel = {
+          ...rel,
+          _inverse: true,
+          // Para inversa: la persona "origen" pasa a ser la que declaró (rel.person)
+          _declaredByPersonId: origin,
+          // La persona que originalmente es "relatedPerson" es la que estamos indexando
+          _relatedPersonId: rel.relatedPerson?._id?.toString?.() ?? rel.relatedPerson?.toString?.() ?? '',
+        }
+        if (!relationshipsByPerson.has(target)) relationshipsByPerson.set(target, [])
+        relationshipsByPerson.get(target)!.push(inverseRel)
+      }
+    }
+  }
+
+  const items = persons.map((p) => {
+    const pid = p._id?.toString?.() ?? ''
     const result: Record<string, any> = {
-      id: p._id?.toString?.() ?? '',
+      id: pid,
       name: p.name,
       birthDate: p.birthDate,
       age: p.birthDate ? getAge(p.birthDate) : null,
@@ -110,15 +183,8 @@ export default defineEventHandler(async (event) => {
       updatedAt: p.updatedAt,
     }
 
-    // Membresías activas de la persona
-    const memberships = await MinistryMembership.find({
-      person: p._id,
-      status: 'active',
-    })
-      .populate('ministry', 'name code color icon')
-      .lean()
-
-    result.ministries = memberships.map((m: any) => ({
+    // Membresías activas de la persona (desde el mapa global)
+    result.ministries = (membershipsByPerson.get(pid) || []).map((m: any) => ({
       id: m.ministry?._id?.toString?.() ?? '',
       name: m.ministry?.name ?? '',
       code: m.ministry?.code ?? '',
@@ -127,29 +193,28 @@ export default defineEventHandler(async (event) => {
       roleInMinistry: m.roleInMinistry,
     }))
 
-    // Niños relacionados (para check-in de RocaKids):
-    // 1) miembros del hogar con rol hijo/hija en familias de la persona
+    // Niños relacionados (para check-in de RocaKids)
     if (includeRelatedKids) {
       const relatedKids: Record<string, any>[] = []
+      const seenKids = new Set<string>()
 
-      // Desde la familia del hogar: tomar los miembros con rol hijo/hija
-      const families = await Family.find({ 'members.person': p._id })
-        .populate('members.person', 'name birthDate gender')
-        .lean()
-      for (const fam of families as any[]) {
+      // 1) Desde las familias del hogar: miembros con rol hijo/hija
+      const personFamilies = familiesByPerson.get(pid) || []
+      for (const fam of personFamilies) {
         for (const member of fam.members ?? []) {
           const child = member.person
           if (!child?._id) continue
           const childIdStr = child._id.toString()
-          if (childIdStr === p._id.toString()) continue
+          if (childIdStr === pid) continue
           const kidRole = member.roleInFamily ?? ''
           const isKidLike = /hijo|hija|niño|niña|sobrino|sobrina|nieto|nieta|bebé|bebe/i.test(kidRole)
           if (!isKidLike) continue
           const childAge = child.birthDate ? getAge(child.birthDate) : null
-          // Filtrar por rango de edad (configurado en el ministerio del evento)
           if (kidAgeRange && (childAge === null || childAge < kidAgeRange.min || childAge > kidAgeRange.max)) {
             continue
           }
+          if (seenKids.has(childIdStr)) continue
+          seenKids.add(childIdStr)
           relatedKids.push({
             id: childIdStr,
             name: child.name ?? '',
@@ -163,21 +228,29 @@ export default defineEventHandler(async (event) => {
         }
       }
 
-      // Desde las relaciones: personas que la persona trae como hijo/hija/tío/abuelo etc.
-      const outbound = await Relationship.find({ person: p._id })
-        .populate('relatedPerson', 'name birthDate gender')
-        .lean()
-      for (const rel of outbound as any[]) {
-        const relPerson = rel.relatedPerson
+      // 2) Desde las relaciones directas (ambas direcciones)
+      const personRelationships = relationshipsByPerson.get(pid) || []
+      for (const rel of personRelationships) {
+        // Determinar la "otra persona" y el tipo de relación
+        let relPerson: any = null
+        let relType = ''
+        if (rel._inverse) {
+          // Relación inversa: alguien (rel.person) declaró una relación con esta persona
+          relPerson = rel.person
+          relType = rel.relationshipType ?? ''
+        } else {
+          // Relación directa: esta persona declaró relación con rel.relatedPerson
+          relPerson = rel.relatedPerson
+          relType = rel.relationshipType ?? ''
+        }
         if (!relPerson?._id) continue
         const relIdStr = relPerson._id.toString()
-        if (relIdStr === p._id.toString()) continue
-        const kidLike = /hijo|hija|sobrino|sobrina|nieto|nieta/i.test(rel.relationshipType ?? '')
+        if (relIdStr === pid) continue
+        const kidLike = /hijo|hija|sobrino|sobrina|nieto|nieta/i.test(relType)
         if (!kidLike) continue
-        // Evitar duplicados con el hogar
-        if (relatedKids.some((k) => k.id === relIdStr)) continue
+        if (seenKids.has(relIdStr)) continue
+        seenKids.add(relIdStr)
         const relAge = relPerson.birthDate ? getAge(relPerson.birthDate) : null
-        // Filtrar por rango de edad (configurado en el ministerio del evento)
         if (kidAgeRange && (relAge === null || relAge < kidAgeRange.min || relAge > kidAgeRange.max)) {
           continue
         }
@@ -187,7 +260,7 @@ export default defineEventHandler(async (event) => {
           birthDate: relPerson.birthDate ?? null,
           age: relAge,
           gender: relPerson.gender ?? null,
-          relationship: rel.relationshipType ?? '',
+          relationship: relType,
           source: 'relationship',
           eligible: relAge !== null && relAge >= (kidAgeRange?.min ?? -Infinity) && relAge <= (kidAgeRange?.max ?? Infinity),
         })
@@ -197,7 +270,7 @@ export default defineEventHandler(async (event) => {
     }
 
     return result
-  }))
+  })
 
   return {
     items,

@@ -21,4 +21,10 @@ personSchema.methods.toJSON = function () {
   return obj
 }
 
+// Índices para búsqueda rápida por nombre, teléfono y email
+personSchema.index({ name: 1 })
+personSchema.index({ phone: 1 })
+personSchema.index({ email: 1 })
+personSchema.index({ isActive: 1 })
+
 export const Person = model('Person', personSchema);
