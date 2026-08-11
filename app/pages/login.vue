@@ -34,23 +34,26 @@ const clientLogo = ref<any>(runConfig.clientLogo)
                     </v-sheet> -->
                   <!-- </v-sheet> -->
                 <!-- </v-card> -->
-            <template v-if="clientLogo">
+            <v-card color="#243E6F" class="mx-4 mo-4 ">
+              <v-sheet color="#243E6F" class="d-flex justify-center align-center">
+                  <NuxtImg class="my-4 px-4" height="130"
+                    src="/images/crbaq-blanco.svg"
+                  />
+                </v-sheet>
+            </v-card>
+            <!-- <template v-if="clientLogo">
   
-                <v-card color="blue-darken-3" class="mx-4 mo-4 ">
-                  <v-sheet color="blue-darken-3" class="d-flex justify-center align-center">
-                    <v-sheet color="blue-darken-3" class="ml-0">
-                      <img class="mt-2"
-                        height="100"
-                        :src="clientLogo"
-                      />
-                    </v-sheet>
-                  
-                    <!-- <v-sheet color="#20344C" class="ml-4" width="150">
-                      <p class="logo-text text-left font-weight-medium">BOSTON INTERNATIONAL SCHOOL</p>
-                    </v-sheet> -->
+              <v-card color="blue-darken-3" class="mx-4 mo-4 ">
+                <v-sheet color="blue-darken-3" class="d-flex justify-center align-center">
+                  <v-sheet color="blue-darken-3" class="ml-0">
+                    <img class="mt-2"
+                      height="100"
+                      :src="clientLogo"
+                    />
                   </v-sheet>
-                </v-card>
-              </template>
+                </v-sheet>
+              </v-card>
+            </template> -->
           </v-col>
           <login-form />
         </v-card>

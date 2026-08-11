@@ -19,11 +19,11 @@ const useBackground = () => {
   
   const random_item = (() => {
     const items = [
-      'https://images.pexels.com/photos/37098141/pexels-photo-37098141.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      'https://images.pexels.com/photos/33197282/pexels-photo-33197282.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      // 'https://images.pexels.com/photos/10132977/pexels-photo-10132977.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-      // 'https://images.pexels.com/photos/3786748/pexels-photo-3786748.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-      // 'https://images.pexels.com/photos/327882/pexels-photo-327882.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
+      // 'https://images.pexels.com/photos/37098141/pexels-photo-37098141.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      // 'https://images.pexels.com/photos/33197282/pexels-photo-33197282.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      'https://images.pexels.com/photos/10132977/pexels-photo-10132977.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      'https://images.pexels.com/photos/3786748/pexels-photo-3786748.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+      'https://images.pexels.com/photos/327882/pexels-photo-327882.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
     ];
     const index = Math.floor(Math.random()*items.length)
     // return 'url(' + items[index] + ') no-repeat center center fixed'
@@ -38,10 +38,6 @@ const useBackground = () => {
     backgroundPosition: 'center',
     minHeight: '100vh'
   }))
-
-  // onMounted(() => {
-  //     backgroundUrl.value = random_item()
-  // })
 
   return {
     background, imageUrl, random_item, backgroundStyle
