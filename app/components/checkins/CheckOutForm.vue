@@ -14,6 +14,7 @@ const searching = ref(false)
 const selectedCaregiver = ref<Record<string, any> | null>(null)
 const submitError = ref('')
 const submitting = ref(false)
+const authorizedPeople = ref<Array<Record<string, any>>>([])
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -22,6 +23,7 @@ const reset = () => {
   caregiverSearch.value = ''
   caregiverResults.value = []
   selectedCaregiver.value = null
+  authorizedPeople.value = []
   submitError.value = ''
 }
 
@@ -32,8 +34,57 @@ watch(isCheckOutOpen, (isOpen) => {
     reset()
     // Restaurar después del reset
     wristbandNumber.value = selectedCheckIn.value?.wristbandNumber || ''
+
+    // Construir la lista de autorizados: quien entregó (caregiver) + allowedPickups
+    const people: Array<Record<string, any>> = []
+    const seen = new Set<string>()
+
+    // 1) Quien entregó (siempre autorizado)
+    const caregiverId = selectedCheckIn.value?.caregiverId
+    if (caregiverId) {
+      people.push({
+        id: caregiverId,
+        name: selectedCheckIn.value?.caregiverName || 'Quien entregó',
+        phone: selectedCheckIn.value?.caregiverPhone || '',
+        isCaregiver: true,
+      })
+      seen.add(caregiverId)
+    }
+
+    // 2) Autorizados adicionales del check-in
+    for (const ap of (selectedCheckIn.value?.allowedPickups || [])) {
+      if (!ap?.id || seen.has(ap.id)) continue
+      seen.add(ap.id)
+      people.push({
+        id: ap.id,
+        name: ap.name || '',
+        phone: ap.phone || '',
+        isCaregiver: false,
+      })
+    }
+
+    authorizedPeople.value = people
+
+    // Preseleccionar al caregiver (quien entregó) por defecto
+    if (caregiverId) {
+      selectedCaregiver.value = {
+        id: caregiverId,
+        name: selectedCheckIn.value?.caregiverName || 'Quien entregó',
+        phone: selectedCheckIn.value?.caregiverPhone || '',
+      }
+      caregiverSearch.value = ''
+      caregiverResults.value = []
+    }
   }
 })
+
+const selectAuthorized = (person: Record<string, any>) => {
+  selectedCaregiver.value = { id: person.id, name: person.name, phone: person.phone || '' }
+  caregiverSearch.value = ''
+  caregiverResults.value = []
+}
+
+const isCaregiverSelected = (id: string) => selectedCaregiver.value?.id === id
 
 const close = () => {
   closeCheckOut()
@@ -49,8 +100,8 @@ watch(caregiverSearch, (val) => {
   searchTimeout = setTimeout(async () => {
     searching.value = true
     try {
-      const result = await $fetch('/api/caregivers/search', {
-        params: { q: val, limit: 8 },
+      const result = await $fetch('/api/persons', {
+        params: { search: val, limit: 8 },
       }) as any
       caregiverResults.value = result.items || []
     } catch {
@@ -125,6 +176,35 @@ const submit = async () => {
         />
 
         <h3 class="text-subtitle-1 font-weight-bold mb-2 mt-2">¿Quién recoge al niño?</h3>
+
+        <!-- Personas autorizadas a recoger (del check-in) -->
+        <template v-if="authorizedPeople.length">
+          <p class="text-caption text-medium-emphasis mb-1">
+            Autorizados a recoger — toca para seleccionar:
+          </p>
+          <div class="mb-3">
+            <v-chip
+              v-for="person in authorizedPeople"
+              :key="person.id"
+              class="mr-1 mb-1"
+              :color="isCaregiverSelected(person.id) ? 'green' : (person.isCaregiver ? 'green' : 'primary')"
+              :variant="isCaregiverSelected(person.id) ? 'tonal' : 'outlined'"
+              :prepend-icon="isCaregiverSelected(person.id) ? 'mdi-check' : 'mdi-account-outline'"
+              @click="selectAuthorized(person)"
+            >
+              {{ person.name }}
+              <template v-if="person.phone"> · {{ person.phone }}</template>
+              <template v-if="person.isCaregiver">
+                <span class="ml-1 text-caption">· quien entregó</span>
+              </template>
+            </v-chip>
+          </div>
+        </template>
+        <template v-else>
+          <p class="text-caption text-medium-emphasis mb-2">
+            Sin autorizados registrados — busca a la persona que recoge:
+          </p>
+        </template>
 
         <template v-if="!selectedCaregiver">
           <v-text-field
