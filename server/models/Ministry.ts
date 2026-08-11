@@ -13,6 +13,14 @@ const ministrySchema = new Schema({
   // Rango de edad (aplica si eligibilityType = 'age')
   minAge: { type: Number },
   maxAge: { type: Number },
+  // Salones / grupos por rango de edad (ej. RocaKids: 1-2, 3-4, 5-7, 8-10)
+  ageGroups: [
+    {
+      name: { type: String, trim: true },
+      minAge: { type: Number },
+      maxAge: { type: Number },
+    },
+  ],
   // Género (aplica si eligibilityType = 'gender')
   gender: { type: String, enum: ['male', 'female'] },
   // Estado civil (aplica si eligibilityType = 'marital')

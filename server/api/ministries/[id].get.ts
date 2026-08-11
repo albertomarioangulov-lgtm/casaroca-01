@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
     eligibilityType: ministry.eligibilityType,
     minAge: ministry.minAge,
     maxAge: ministry.maxAge,
+    ageGroups: ministry.ageGroups ?? [],
     gender: ministry.gender,
     maritalStatus: ministry.maritalStatus,
     icon: ministry.icon,
