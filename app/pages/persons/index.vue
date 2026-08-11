@@ -60,6 +60,10 @@ const { data: ministries } = await useFetch('/api/ministries', {
   headers: useRequestHeaders(['cookie']),
 })
 
+const handleView = (person: Record<string, any>) => {
+  navigateTo(`/persons/${person.id}`)
+}
+
 const handleSaved = () => {
   fetchPersons()
 }
@@ -166,6 +170,7 @@ onMounted(() => {
       :items-per-page="itemsPerPage"
       :sort-by="sortBy"
       :sort-order="sortOrder"
+      @view="handleView"
       @update:options="handleUpdateOptions"
     />
 

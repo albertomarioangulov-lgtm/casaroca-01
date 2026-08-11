@@ -10,6 +10,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'view', person: Record<string, any>): void
   (e: 'update:options', options: any): void
 }>()
 
@@ -37,6 +38,7 @@ const headers = [
     :sort-by="[{ key: sortBy, order: sortOrder }]"
     density="comfortable"
     @update:options="emit('update:options', $event)"
+    @click:row="(_: any, { item }: any) => emit('view', item)"
   >
     <template #item.age="{ item }">
       <span v-if="item.age !== null">{{ item.age }} años</span>
@@ -69,7 +71,16 @@ const headers = [
       <span v-else class="text-medium-emphasis">—</span>
     </template>
     <template #item.actions="{ item }">
-      <PersonsBtnEdit :person="item" />
+      <div class="d-flex align-center" @click.stop>
+        <v-btn
+          size="small"
+          variant="text"
+          icon="mdi-eye"
+          :title="`Ver ${item.name || ''}`"
+          @click="emit('view', item)"
+        />
+        <PersonsBtnEdit :person="item" />
+      </div>
     </template>
     <template #no-data>
       No hay personas registradas.
@@ -79,3 +90,9 @@ const headers = [
     </template>
   </v-data-table-server>
 </template>
+
+<style scoped>
+:deep(.v-data-table__tr) {
+  cursor: pointer;
+}
+</style>
