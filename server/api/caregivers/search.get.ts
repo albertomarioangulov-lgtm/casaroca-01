@@ -2,6 +2,7 @@ import { Caregiver } from '~~/server/models/Caregiver'
 import { Child } from '~~/server/models/Child'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, PERMISSIONS.CAREGIVERS_READ)
@@ -12,10 +13,8 @@ export default defineEventHandler(async (event) => {
 
   const filter: Record<string, any> = {}
   if (q) {
-    filter.$or = [
-      { name: { $regex: q, $options: 'i' } },
-      { phone: { $regex: q, $options: 'i' } },
-    ]
+    const searchFilter = buildSearchFilter(q, ['name', 'phone'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
 
   const caregivers = await Caregiver.find(filter).limit(limit).lean()

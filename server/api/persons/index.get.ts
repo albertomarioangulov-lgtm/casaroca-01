@@ -6,6 +6,7 @@ import { Ministry } from '~~/server/models/Ministry'
 import { Event } from '~~/server/models/Event'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 function getAge(birthDate: Date): number {
   const today = new Date()
@@ -63,11 +64,8 @@ export default defineEventHandler(async (event) => {
 
   const filter: Record<string, any> = {}
   if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-    ]
+    const searchFilter = buildSearchFilter(search, ['name', 'phone', 'email'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
   if (gender) filter.gender = gender
   if (maritalStatus) filter.maritalStatus = maritalStatus

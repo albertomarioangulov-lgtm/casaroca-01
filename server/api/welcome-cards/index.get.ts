@@ -1,6 +1,7 @@
 import { WelcomeCard } from '~~/server/models/WelcomeCard'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, PERMISSIONS.WELCOME_CARDS_READ)
@@ -17,11 +18,8 @@ export default defineEventHandler(async (event) => {
 
   const filter: Record<string, any> = {}
   if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-    ]
+    const searchFilter = buildSearchFilter(search, ['name', 'phone', 'email'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
   if (visitorType) filter.visitorType = visitorType
   if (eventId) filter.event = eventId

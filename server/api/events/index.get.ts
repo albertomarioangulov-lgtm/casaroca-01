@@ -1,6 +1,7 @@
 import { Event } from '~~/server/models/Event'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, PERMISSIONS.EVENTS_READ)
@@ -19,7 +20,8 @@ export default defineEventHandler(async (event) => {
 
   const filter: Record<string, any> = {}
   if (search) {
-    filter.name = { $regex: search, $options: 'i' }
+    const searchFilter = buildSearchFilter(search, ['name'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
   // Eventos satélite se ocultan por defecto en el listado general
   if (parentEventId) {

@@ -2,6 +2,7 @@ import { Event } from '~~/server/models/Event'
 import { EventCheckIn } from '~~/server/models/EventCheckIn'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { makeInMemorySearch } from '~~/server/utils/search'
 
 // Calcular edad en años a partir de la fecha de nacimiento
 function calcAge(birthDate: Date): number {
@@ -53,13 +54,14 @@ export default defineEventHandler(async (event) => {
   }
 
   if (search) {
-    const lower = search.toLowerCase()
-    items = items.filter((c: any) => {
-      const personName = c.person?.name?.toLowerCase?.() ?? ''
-      const caregiverName = c.caregiver?.name?.toLowerCase?.() ?? ''
-      const wristband = c.wristbandNumber?.toLowerCase?.() ?? ''
-      return personName.includes(lower) || caregiverName.includes(lower) || wristband.includes(lower)
-    })
+    const matcher = makeInMemorySearch(search, (c: any) => [
+      c.person?.name ?? '',
+      c.caregiver?.name ?? '',
+      c.wristbandNumber ?? '',
+    ])
+    if (matcher) {
+      items = items.filter(matcher)
+    }
   }
 
   return {

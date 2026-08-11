@@ -2,6 +2,7 @@ import { User } from '~~/server/models/User'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
 import { getEndOfDay } from '~~/server/utils/dates'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, PERMISSIONS.USERS_READ)
@@ -21,10 +22,8 @@ export default defineEventHandler(async (event) => {
     filter.roles = role
   }
   if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-    ]
+    const searchFilter = buildSearchFilter(search, ['name', 'email'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
 
   // Filtro por rango de fechas

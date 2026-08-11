@@ -1,6 +1,7 @@
 import { Child } from '~~/server/models/Child'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { buildSearchFilter } from '~~/server/utils/search'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, PERMISSIONS.CHILDREN_READ)
@@ -14,9 +15,8 @@ export default defineEventHandler(async (event) => {
 
   const filter: Record<string, any> = {}
   if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-    ]
+    const searchFilter = buildSearchFilter(search, ['name'])
+    if (searchFilter) Object.assign(filter, searchFilter)
   }
 
   const total = await Child.countDocuments(filter)
