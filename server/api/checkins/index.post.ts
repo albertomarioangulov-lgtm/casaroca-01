@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { Types } from 'mongoose'
 import { Event } from '~~/server/models/Event'
 import { Ministry } from '~~/server/models/Ministry'
 import { Person } from '~~/server/models/Person'
@@ -66,12 +65,14 @@ export default defineEventHandler(async (event) => {
   // Rango de edad del ministerio del evento (si usa eligibilityType 'age')
   let eventMinAge: number | null = null
   let eventMaxAge: number | null = null
+  let ageGroups: Array<{ name?: string | null; minAge?: number | null; maxAge?: number | null }> = []
   if (eventDoc.ministry) {
     const ministry = await Ministry.findById(eventDoc.ministry).lean()
     if (ministry?.eligibilityType === 'age' && typeof ministry.minAge === 'number' && typeof ministry.maxAge === 'number') {
       eventMinAge = ministry.minAge
       eventMaxAge = ministry.maxAge
     }
+    ageGroups = ministry?.ageGroups ?? []
   }
 
   const childAge = (birthDate?: Date | null): number | null => {
@@ -81,6 +82,15 @@ export default defineEventHandler(async (event) => {
     const m = today.getMonth() - birthDate.getMonth()
     if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--
     return age
+  }
+
+  // Asignar el niño a un salón/grupo según su edad y los rangos configurados del ministerio
+  const resolveAgeGroup = (age: number | null) => {
+    if (age === null || ageGroups.length === 0) return { name: 'Sin grupo', index: -1, minAge: null, maxAge: null }
+    const idx = ageGroups.findIndex((g) => age >= (g.minAge ?? 0) && age <= (g.maxAge ?? 999))
+    if (idx === -1) return { name: 'Sin grupo', index: -1, minAge: null, maxAge: null }
+    const group = ageGroups[idx]
+    return { name: group?.name || 'Grupo', index: idx, minAge: group?.minAge ?? null, maxAge: group?.maxAge ?? null }
   }
 
   // 2. Obtener o crear el acudiente como Person
@@ -177,33 +187,37 @@ export default defineEventHandler(async (event) => {
     }).lean()
 
     // Calcular familiares autorizados del niño (padres, abuelos, tíos, etc.)
-    // Esto permite que un tío/abuela/hermano que trajo al niño quede autorizado a recogerlo
-    let familyPickups: string[] = []
-    if (allowedPickups && allowedPickups.length > 0) {
-      familyPickups = [...allowedPickups]
-    } else {
-      const relationships = await Relationship.find({
-        $or: [
-          { person: childId },
-          { relatedPerson: childId },
-        ],
-      }).lean()
+    // Siempre fusionar: 1) quien entregó (caregiver), 2) seleccionados por el recepcionista,
+    // 3) familiares automáticos del niño desde Relationship
+    const familyPickups = new Set<string>()
+    familyPickups.add(caregiverId)
+    for (const pid of allowedPickups ?? []) familyPickups.add(pid)
 
-      // Los familiares son las "otras personas" de cada relación
-      const relatedIds = new Set<string>()
-      for (const rel of relationships) {
-        const origin = rel.person.toString()
-        const target = rel.relatedPerson.toString()
-        if (origin === childId) {
-          relatedIds.add(target)
-        } else {
-          relatedIds.add(origin)
-        }
+    const relationships = await Relationship.find({
+      $or: [
+        { person: childId },
+        { relatedPerson: childId },
+      ],
+    }).lean()
+
+    // Los familiares son las "otras personas" de cada relación
+    for (const rel of relationships) {
+      const origin = rel.person.toString()
+      const target = rel.relatedPerson.toString()
+      if (origin === childId) {
+        familyPickups.add(target)
+      } else {
+        familyPickups.add(origin)
       }
-      familyPickups = Array.from(relatedIds)
     }
 
-    // 6. Crear el check-in con pulsera
+    // Calcular el salón/grupo del niño según su edad
+    const childDoc = await Person.findById(childId).select('name birthDate').lean()
+    const age = childDoc?.birthDate ? childAge(childDoc.birthDate) : null
+    const ageGroup = resolveAgeGroup(age)
+
+    // 6. Crear el check-in con pulsera; solo se guarda el índice del salón.
+    // Los rangos viven en `event.ageGroupsSnapshot` del Evento (histórico congelado).
     const checkIn = await EventCheckIn.create({
       event: eventDoc._id,
       person: childId,
@@ -212,14 +226,19 @@ export default defineEventHandler(async (event) => {
       wristbandNumber: childEntry.wristbandNumber.trim(),
       enrollment: enrollment?._id || undefined,
       checkInTime: new Date(),
-      allowedPickups: familyPickups,
+      allowedPickups: Array.from(familyPickups),
+      ageGroupIndex: ageGroup.index,
     })
 
     createdCheckIns.push({
       id: checkIn._id.toString(),
       personId: childId,
+      name: childDoc?.name ?? '',
       wristbandNumber: checkIn.wristbandNumber,
       checkInTime: checkIn.checkInTime,
+      age,
+      ageGroupName: ageGroup.name,
+      ageGroupIndex: ageGroup.index,
     })
   }
 

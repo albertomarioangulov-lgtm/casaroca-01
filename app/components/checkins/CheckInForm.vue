@@ -60,6 +60,9 @@ const pickupSearch = ref('')
 const pickupResults = ref<Array<Record<string, any>>>([])
 const searchingPickups = ref(false)
 const selectedPickups = ref<Record<string, any>[]>([])
+const familyCircle = ref<Array<Record<string, any>>>([])
+const loadingFamilyCircle = ref(false)
+const autoPickup = ref<Record<string, any> | null>(null)
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 let childSearchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -89,6 +92,8 @@ const reset = () => {
   pickupSearch.value = ''
   pickupResults.value = []
   selectedPickups.value = []
+  familyCircle.value = []
+  autoPickup.value = null
   submitError.value = ''
 }
 
@@ -134,6 +139,29 @@ const selectPerson = (person: Record<string, any>) => {
   }))
   // No preseleccionar: el recepcionista marca cuáles va a registrar
   selectedChildren.value = []
+
+  // La persona que entrega queda como autorizado predeterminado
+  autoPickup.value = { id: person.id, name: person.name, phone: person.phone || '' }
+  selectedPickups.value = autoPickup.value ? [autoPickup.value] : []
+
+  // Cargar círculo familiar para sugerencias rápidas
+  loadFamilyCircle(person.id)
+}
+
+const loadFamilyCircle = async (personId: string) => {
+  loadingFamilyCircle.value = true
+  familyCircle.value = []
+  try {
+    const result = await $fetch(`/api/persons/${personId}/family-circle`) as any
+    // Excluir a la persona que entrega (ya está como autorizado)
+    familyCircle.value = (result?.items || []).filter(
+      (p: Record<string, any>) => p.id !== personId
+    )
+  } catch {
+    familyCircle.value = []
+  } finally {
+    loadingFamilyCircle.value = false
+  }
 }
 
 const createNewPersonMode = () => {
@@ -143,6 +171,9 @@ const createNewPersonMode = () => {
   personResults.value = []
   relatedKids.value = []
   selectedChildren.value = []
+  familyCircle.value = []
+  autoPickup.value = null
+  selectedPickups.value = []
 }
 
 // ===== Marcar un niño relacionado para registrarlo =====
@@ -249,6 +280,39 @@ const addPickup = (person: Record<string, any>) => {
 const removePickup = (id: string) => {
   selectedPickups.value = selectedPickups.value.filter((p) => p.id !== id)
 }
+
+const removeAutoPickup = () => {
+  if (autoPickup.value) {
+    removePickup(autoPickup.value.id)
+    autoPickup.value = null
+  }
+}
+
+// ¿Es un adulto? (para filtrar el círculo familiar en autorizados a recoger)
+const isAdult = (person: Record<string, any>) => {
+  if (person.age === null || person.age === undefined) return true
+  return person.age >= 18
+}
+
+const isPickupSelected = (id: string) =>
+  selectedPickups.value.some((p) => p.id === id)
+
+const toggleFamilyPickup = (person: Record<string, any>) => {
+  if (isPickupSelected(person.id)) {
+    removePickup(person.id)
+  } else {
+    addPickup(person)
+  }
+}
+
+const otherPickups = computed(() => {
+  const autoId = autoPickup.value?.id
+  return selectedPickups.value.filter((p) => p.id !== autoId)
+})
+
+const adultFamilyCircle = computed(() =>
+  familyCircle.value.filter(isAdult)
+)
 
 // ===== Validación y envío =====
 const hasSelectedPerson = computed(
@@ -512,12 +576,29 @@ defineExpose({ open })
             3. Autorizados a recoger (opcional)
           </h3>
           <p class="text-caption text-medium-emphasis mb-2">
-            Además de la persona que entrega, ¿quién más puede recoger al niño?
+            La persona que entrega queda autorizada automáticamente. Puedes añadir más.
           </p>
 
-          <div v-if="selectedPickups.length" class="mb-2">
+          <!-- Persona que entrega (predeterminada) -->
+          <div v-if="autoPickup" class="mb-2">
             <v-chip
-              v-for="p in selectedPickups"
+              color="green"
+              variant="tonal"
+              class="mr-1 mb-1"
+              closable
+              @click:close="removeAutoPickup"
+            >
+              <v-icon start icon="mdi-check" size="small" />
+              {{ autoPickup.name }}
+              <template v-if="autoPickup.phone"> · {{ autoPickup.phone }}</template>
+            </v-chip>
+            <span class="text-caption text-medium-emphasis ml-1">Quien entrega</span>
+          </div>
+
+          <!-- Otros autorizados seleccionados -->
+          <div v-if="otherPickups.length" class="mb-2">
+            <v-chip
+              v-for="p in otherPickups"
               :key="p.id"
               class="mr-1 mb-1"
               closable
@@ -526,6 +607,39 @@ defineExpose({ open })
               {{ p.name }}
             </v-chip>
           </div>
+
+          <!-- Círculo familiar: sugerencias rápidas -->
+          <template v-if="selectedPerson">
+            <p class="text-caption font-weight-medium mb-1 mt-2">
+              Círculo familiar de {{ selectedPerson.name }} — toca para autorizar:
+            </p>
+            <div
+              v-if="loadingFamilyCircle"
+              class="text-caption text-medium-emphasis mb-2"
+            >
+              Cargando círculo familiar...
+            </div>
+            <div
+              v-else-if="adultFamilyCircle.length"
+              class="mb-2"
+            >
+              <v-chip
+                v-for="fam in adultFamilyCircle"
+                :key="fam.id"
+                class="mr-1 mb-1"
+                :color="isPickupSelected(fam.id) ? 'primary' : undefined"
+                :variant="isPickupSelected(fam.id) ? 'tonal' : 'outlined'"
+                :prepend-icon="isPickupSelected(fam.id) ? 'mdi-check' : 'mdi-plus'"
+                @click="toggleFamilyPickup(fam)"
+              >
+                {{ fam.name }}
+                <template v-if="fam.relationship"> · {{ fam.relationship }}</template>
+              </v-chip>
+            </div>
+            <p v-else-if="!loadingFamilyCircle" class="text-caption text-medium-emphasis mb-2">
+              No se encontró círculo familiar registrado.
+            </p>
+          </template>
 
           <v-text-field
             v-model="pickupSearch"
