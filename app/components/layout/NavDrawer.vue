@@ -43,6 +43,9 @@ const navItems = computed(() => [
       ...(can(PERMISSIONS.EVENTS_READ)
         ? [{ title: 'Eventos', icon: 'mdi-calendar-star-outline', to: '/events' }]
         : []),
+      ...(can(PERMISSIONS.CHECKINS_READ)
+        ? [{ title: 'Reportes', icon: 'mdi-chart-bar', to: '/reports' }]
+        : []),
       ...(can(PERMISSIONS.COURSES_READ)
         ? [{ title: 'Cursos de Discipulado', icon: 'mdi-school-outline', to: '/courses' }]
         : []),
