@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const eventDoc = await Event.findById(id)
-    .populate('ministry', 'name code color icon')
+    .populate('ministry', 'name code color icon ageGroups')
     .populate('parentEvent', 'name status')
     .lean()
 
@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
     location: eventDoc.location,
     ministryId: (eventDoc.ministry as any)?._id?.toString?.() ?? (eventDoc.ministry as any)?.toString?.() ?? '',
     ministryName: (eventDoc.ministry as any)?.name ?? '',
+    ageGroups: (eventDoc.ministry as any)?.ageGroups ?? [],
     parentEventId: (eventDoc.parentEvent as any)?._id?.toString?.() ?? (eventDoc.parentEvent as any)?.toString?.() ?? '',
     parentEventName: (eventDoc.parentEvent as any)?.name ?? '',
     parentEventActive: (eventDoc.parentEvent as any)?.status === 'active',

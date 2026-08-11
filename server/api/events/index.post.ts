@@ -58,6 +58,16 @@ export default defineEventHandler(async (event) => {
   // Validar evento padre si se envía
   await validateParentEvent(parentEventId)
 
+  // Si el evento pertenece a un ministerio con salones por rango de edad,
+  // congelar el snapshot de salones de ESTE evento en el momento de su creación.
+  let ageGroupsSnapshot: Array<{ name?: string | null; minAge?: number | null; maxAge?: number | null }> = []
+  if (ministryId) {
+    const ministry = await Ministry.findById(ministryId).lean()
+    if (ministry?.ageGroups?.length) {
+      ageGroupsSnapshot = ministry.ageGroups as any
+    }
+  }
+
   const eventDoc = await Event.create({
     name,
     description,
@@ -70,6 +80,7 @@ export default defineEventHandler(async (event) => {
     welcomeEnabled: welcomeEnabled ?? true,
     type: type ?? 'regular',
     status: status ?? 'scheduled',
+    ageGroupsSnapshot,
   })
 
   // Crear satélite de niños automáticamente si se solicita.
@@ -89,19 +100,29 @@ export default defineEventHandler(async (event) => {
     if (!kidsMinistry) {
       warning = 'El evento se creó correctamente, pero no se pudo generar el servicio de niños porque no se encontró el ministerio RocaKids. Créalo en Ministerios y luego usa "Crear satélite RocaKids" en la página del evento.'
     } else {
-      const childEvent = await Event.create({
-        name: `${name} — ${kidsMinistry.name}`,
-        date: new Date(date),
-        startTime,
-        endTime,
-        location,
-        ministry: kidsMinistry._id,
+      // Evitar duplicados: si el evento principal ya tiene un satélite de niños, no crear otro
+      const existingChild = await Event.findOne({
         parentEvent: eventDoc._id,
-        welcomeEnabled: false, // los niños no llenan tarjetas
-        type: 'regular',
-        status: status ?? 'scheduled',
+        ministry: kidsMinistry._id,
       })
-      childEventId = childEvent._id.toString()
+      if (existingChild) {
+        childEventId = existingChild._id.toString()
+        warning = 'El evento se creó correctamente, pero ya tenía un servicio de niños vinculado. No se creó uno nuevo.'
+      } else {
+        const childEvent = await Event.create({
+          name: `${name} — ${kidsMinistry.name}`,
+          date: new Date(date),
+          startTime,
+          endTime,
+          location,
+          ministry: kidsMinistry._id,
+          parentEvent: eventDoc._id,
+          welcomeEnabled: false, // los niños no llenan tarjetas
+          type: 'regular',
+          status: status ?? 'scheduled',
+        })
+        childEventId = childEvent._id.toString()
+      }
     }
   }
 

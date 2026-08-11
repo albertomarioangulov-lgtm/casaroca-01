@@ -24,6 +24,7 @@ const {
 
 const eventName = ref('')
 const eventMinistryName = ref('')
+const eventAgeGroups = ref<Array<Record<string, any>>>([])
 const welcomeEnabled = ref(true)
 const eventLoaded = ref(false)
 const eventStatus = ref('')
@@ -76,6 +77,7 @@ const fetchEvent = async () => {
     const result = await $fetch(`/api/events/${eventId}`) as any
     eventName.value = result.name
     eventMinistryName.value = result.ministryName || ''
+    eventAgeGroups.value = result.ageGroups ?? []
     welcomeEnabled.value = result.welcomeEnabled ?? true
     eventStatus.value = result.status || ''
     parentEventId.value = result.parentEventId || ''
@@ -104,6 +106,7 @@ const fetchEventStatus = async () => {
       parentEventActive.value = result.parentEventActive ?? false
       eventName.value = result.name || eventName.value
       eventMinistryName.value = result.ministryName ?? eventMinistryName.value
+      if (result.ageGroups) eventAgeGroups.value = result.ageGroups
       eventLoaded.value = true
     }
   } catch {
@@ -134,6 +137,61 @@ const hasPendingChildren = computed(() =>
   isParentEvent.value &&
   childEvents.value.some((c: Record<string, any>) => c.status === 'scheduled')
 )
+
+// Agrupar check-ins por salón/rango de edad. Los salones se pre-crean desde
+// los ageGroups configurados en el ministerio (aunque aún no tengan niños),
+// y los check-ins con snapshot se asignan a su salón histórico.
+const checkInGroups = computed(() => {
+  const groups = new Map<string, { name: string; index: number; minAge: number | null; maxAge: number | null; items: any[]; inside: number; out: number }>()
+  const ungrouped = { name: 'Sin grupo', index: -1, minAge: null, maxAge: null, items: [] as any[], inside: 0, out: 0 }
+
+  // Pre-crear los salones configurados del ministerio
+  ;(eventAgeGroups.value || []).forEach((g: any, i: number) => {
+    groups.set(`g${i}`, {
+      name: g.name || `Grupo ${i + 1}`,
+      index: i,
+      minAge: g.minAge ?? null,
+      maxAge: g.maxAge ?? null,
+      items: [] as any[],
+      inside: 0,
+      out: 0,
+    })
+  })
+
+  for (const item of checkIns.value || []) {
+    // Usar el snapshot del check-in si existe, si no, calcular índice -1 (sin grupo)
+    const hasSnapshot = item.ageGroupIndex !== undefined && item.ageGroupIndex >= 0
+    const key = hasSnapshot ? `g${item.ageGroupIndex}` : 'ungrouped'
+    const target = key === 'ungrouped' ? ungrouped : (groups.get(key) || {
+      name: item.ageGroupName || 'Grupo',
+      index: item.ageGroupIndex,
+      minAge: item.ageGroupMinAge ?? null,
+      maxAge: item.ageGroupMaxAge ?? null,
+      items: [] as any[],
+      inside: 0,
+      out: 0,
+    })
+    target.items.push(item)
+    if (!item.checkOutTime) target.inside++
+    else target.out++
+    if (key !== 'ungrouped') groups.set(key, target)
+  }
+  const sorted = Array.from(groups.values()).sort((a, b) => a.index - b.index)
+  if (ungrouped.items.length) sorted.push(ungrouped)
+  return sorted
+})
+
+// Pestaña activa del selector de salones
+const activeTab = ref<number>(0)
+
+// Items visibles según la pestaña/salón seleccionada
+const activeGroupItems = computed(() => {
+  const groups = checkInGroups.value
+  if (groups.length === 0) return checkIns.value || []
+  const idx = activeTab.value ?? 0
+  const group = groups[Math.min(idx, groups.length - 1)]
+  return group ? group.items : []
+})
 
 const doActivate = async (activateChildren: boolean) => {
   activating.value = true
@@ -416,19 +474,45 @@ onBeforeUnmount(() => {
       />
     </v-toolbar>
 
+    <!-- Pestañas de salones / rangos de edad -->
+    <v-tabs
+      v-if="eventAgeGroups.length > 0 || checkInGroups.length > 1"
+      v-model="activeTab"
+      color="primary"
+      class="mb-2"
+    >
+      <v-tab
+        v-for="(group, index) in checkInGroups"
+        :key="index"
+        :value="index"
+      >
+        {{ group.name }}
+        <span v-if="group.minAge !== null && group.maxAge !== null" class="ml-1 text-caption text-medium-emphasis">
+          ({{ group.minAge }}-{{ group.maxAge }})
+        </span>
+        <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
+          {{ group.inside }}
+        </v-chip>
+        <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
+          {{ group.out }}
+        </v-chip>
+      </v-tab>
+    </v-tabs>
+
     <v-data-table-server
       :headers="[
         { title: 'Niño', key: 'childName', sortable: false },
+        { title: 'Edad', key: 'age', sortable: false },
         { title: 'Manilla', key: 'wristbandNumber', sortable: false },
         { title: 'Acudiente que entregó', key: 'caregiverName', sortable: false },
         { title: 'Hora ingreso', key: 'checkInTime', sortable: false },
         { title: 'Salida', key: 'checkOutTime', sortable: false },
         { title: 'Acciones', key: 'actions', sortable: false },
       ]"
-      :items="checkIns || []"
+      :items="activeGroupItems || []"
       item-key="id"
       :loading="loading"
-      :items-length="checkIns.length"
+      :items-length="activeGroupItems.length"
       density="comfortable"
       :hide-default-footer="true"
     >
@@ -437,6 +521,9 @@ onBeforeUnmount(() => {
         <div class="text-caption text-medium-emphasis">
           {{ item.personBirthDate ? new Date(item.personBirthDate).toLocaleDateString() : '' }}
         </div>
+      </template>
+      <template #item.age="{ item }">
+        {{ item.age !== null ? `${item.age} años` : '—' }}
       </template>
       <template #item.checkInTime="{ item }">
         {{ new Date(item.checkInTime).toLocaleTimeString() }}

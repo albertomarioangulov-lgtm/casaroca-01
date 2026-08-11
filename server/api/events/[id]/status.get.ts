@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   // Consulta ligera: solo datos de estado del evento, sin childEvents ni conteos
   const eventDoc = await Event.findById(id)
-    .populate('ministry', 'name')
+    .populate('ministry', 'name ageGroups')
     .populate('parentEvent', 'name status')
     .select('name status welcomeEnabled ministry parentEvent')
     .lean()
@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
     status: e.status ?? '',
     welcomeEnabled: e.welcomeEnabled ?? true,
     ministryName: e.ministry?.name ?? '',
+    ageGroups: e.ministry?.ageGroups ?? [],
     parentEventId: e.parentEvent?._id?.toString?.() ?? e.parentEvent?.toString?.() ?? '',
     parentEventName: e.parentEvent?.name ?? '',
     parentEventActive: e.parentEvent?.status === 'active',

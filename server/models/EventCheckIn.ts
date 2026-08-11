@@ -15,6 +15,9 @@ const eventCheckInSchema = new Schema({
   checkInTime: { type: Date, default: Date.now },
   checkOutTime: { type: Date },
   allowedPickups: [{ type: Schema.Types.ObjectId, ref: 'Person' }], // autorizados a recoger
+  // Índice del salón/rango dentro de `event.ageGroupsSnapshot` del Evento.
+  // Los rangos viven en el Evento (histórico congelado); aquí solo se guarda en qué salón estuvo.
+  ageGroupIndex: { type: Number },
 }, { timestamps: true });
 
 // Índice único: una persona no puede estar registrada dos veces en el mismo evento

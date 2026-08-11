@@ -45,11 +45,21 @@ export const useCheckIns = () => {
     successMessage.value = ''
     loading.value = true
     try {
-      await $fetch('/api/checkins', {
+      const response = await $fetch('/api/checkins', {
         method: 'POST',
         body: payload,
-      })
-      successMessage.value = 'Ingreso registrado correctamente'
+      }) as any
+      const checkIns = response?.checkIns ?? []
+      if (checkIns.length > 0) {
+        const lines = checkIns.map((ci: any) =>
+          ci.ageGroupName && ci.ageGroupName !== 'Sin grupo'
+            ? `${ci.name || ci.personId}: ${ci.ageGroupName}`
+            : `${ci.name || ci.personId}: sin salón asignado`
+        )
+        successMessage.value = `Ingreso registrado. Salones:\n${lines.join('\n')}`
+      } else {
+        successMessage.value = 'Ingreso registrado correctamente'
+      }
       return true
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || 'Error al registrar el ingreso'

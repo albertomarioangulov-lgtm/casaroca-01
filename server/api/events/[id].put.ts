@@ -80,6 +80,21 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // Evitar duplicados: un evento principal no puede tener dos satélites del mismo ministerio
+  if (updateData.parentEvent && updateData.ministry) {
+    const duplicate = await Event.findOne({
+      parentEvent: updateData.parentEvent,
+      ministry: updateData.ministry,
+      _id: { $ne: id },
+    })
+    if (duplicate) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Este evento principal ya tiene un ministerio vinculado con ese mismo ministerio.',
+      })
+    }
+  }
+
   // Reglas de activación:
   // - Un evento satélite solo puede activarse si su padre está 'active'.
   // - Al activar un principal con activateChildren=true, se activan sus satélites en cascada.
@@ -88,6 +103,16 @@ export default defineEventHandler(async (event) => {
   const currentEvent = await Event.findById(id).lean()
   if (!currentEvent) {
     throw createError({ statusCode: 404, statusMessage: 'Evento no encontrado' })
+  }
+
+  // Si el evento se está activando y aún no tiene snapshot de salones, congelarlo
+  // desde el ministerio (para los eventos creados antes de esta funcionalidad).
+  const newStatus2 = updateData.status ?? currentEvent.status
+  if (newStatus2 === 'active' && currentEvent.ministry && !currentEvent.ageGroupsSnapshot?.length) {
+    const ministry = await Ministry.findById(currentEvent.ministry).lean()
+    if (ministry?.ageGroups?.length) {
+      updateData.ageGroupsSnapshot = ministry.ageGroups as any
+    }
   }
 
   const newStatus = updateData.status ?? currentEvent.status
