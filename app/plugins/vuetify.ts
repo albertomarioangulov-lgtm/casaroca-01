@@ -162,7 +162,7 @@ export default defineNuxtPlugin((app) => {
     blueprint: md3,
 
     defaults: {
-      VBtn: { class: 'text-uppercase' },
+      VBtn: {},
       VToolbar: { density },
       VDataTable: { density },
       VDataTableServer: { density },
