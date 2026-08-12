@@ -3,6 +3,7 @@ import { MinistryMembership } from '~~/server/models/MinistryMembership'
 import { Family } from '~~/server/models/Family'
 import { Marriage } from '~~/server/models/Marriage'
 import { Relationship } from '~~/server/models/Relationship'
+import { WelcomeCard } from '~~/server/models/WelcomeCard'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
 
@@ -86,6 +87,12 @@ export default defineEventHandler(async (event) => {
   // Relaciones entrantes: "alguien es (type) de person" → rol inverso derivado
   const inbound = await Relationship.find({ relatedPerson: person._id })
     .populate('person', 'name phone birthDate gender')
+    .lean()
+
+  // Tarjetas de conexión vinculadas a la persona (histórico)
+  const welcomeCards = await WelcomeCard.find({ person: person._id })
+    .sort({ createdAt: -1 })
+    .populate('event', 'name')
     .lean()
 
   return {
@@ -175,5 +182,15 @@ export default defineEventHandler(async (event) => {
         }
       }),
     },
+    welcomeCards: (welcomeCards as any[]).map((wc: any) => ({
+      id: wc._id?.toString?.() ?? '',
+      registrationDate: wc.registrationDate,
+      eventId: wc.event?._id?.toString?.() ?? wc.event?.toString?.() ?? '',
+      eventName: wc.event?.name ?? '',
+      visitorType: wc.visitorType,
+      name: wc.name,
+      phone: wc.phone,
+      email: wc.email,
+    })),
   }
 })

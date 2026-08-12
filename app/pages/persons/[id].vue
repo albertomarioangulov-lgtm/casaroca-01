@@ -27,7 +27,7 @@ const fetchPerson = async () => {
   loading.value = true
   try {
     const url: string = `/api/persons/${personId}`
-    person.value = await $fetch(url)
+    person.value = await $fetch(url) as any
   } catch (e: any) {
     error.value = e?.data?.statusMessage || 'Error al cargar la persona'
   } finally {
@@ -687,7 +687,7 @@ const removeFamilyMember = async (family: Record<string, any>, memberPersonId: s
     </v-card>
 
     <!-- Información extra: membresía y bautismo -->
-    <v-card>
+    <v-card class="mb-4">
       <v-card-title class="text-h6">Información de la iglesia</v-card-title>
       <v-card-text>
         <v-list density="compact">
@@ -700,6 +700,54 @@ const removeFamilyMember = async (family: Record<string, any>, memberPersonId: s
             <v-list-item-title>Bautismo: {{ person.baptismDate ? formatDate(person.baptismDate) : '—' }}</v-list-item-title>
           </v-list-item>
         </v-list>
+      </v-card-text>
+    </v-card>
+
+    <!-- Tarjetas de Conexión vinculadas -->
+    <v-card v-if="can(PERMISSIONS.WELCOME_CARDS_READ)">
+      <v-card-title class="text-h6">
+        Tarjetas de Conexión
+        <v-chip v-if="person.welcomeCards?.length" size="small" color="primary" variant="tonal" class="ml-2">
+          {{ person.welcomeCards.length }}
+        </v-chip>
+      </v-card-title>
+      <v-card-text>
+        <template v-if="person.welcomeCards?.length">
+          <v-list density="compact">
+            <v-list-item
+              v-for="wc in person.welcomeCards"
+              :key="wc.id"
+              :title="wc.name"
+              :subtitle="formatDate(wc.registrationDate)"
+            >
+              <template #prepend>
+                <v-icon>mdi-card-account-details-outline</v-icon>
+              </template>
+              <template #append>
+                <v-chip
+                  size="small"
+                  :color="wc.visitorType === 'first_time' ? 'blue' : 'orange'"
+                  variant="tonal"
+                  class="mr-2"
+                >
+                  {{ wc.visitorType === 'first_time' ? 'Primera vez' : 'Actualiza info' }}
+                </v-chip>
+                <v-chip v-if="wc.eventName" size="small" variant="tonal" class="mr-2">
+                  {{ wc.eventName }}
+                </v-chip>
+                <v-btn
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  icon="mdi-eye-outline"
+                  title="Ver tarjeta"
+                  @click="navigateTo(`/welcome/${wc.id}`)"
+                />
+              </template>
+            </v-list-item>
+          </v-list>
+        </template>
+        <span v-else class="text-medium-emphasis">Sin tarjetas de conexión registradas.</span>
       </v-card-text>
     </v-card>
 
