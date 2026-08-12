@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 
 const props = defineProps<{
   eventId: string
 }>()
+
+const { mobile } = useDisplay()
 
 const emit = defineEmits<{
   (e: 'saved'): void
@@ -366,7 +369,12 @@ defineExpose({ open })
 </script>
 
 <template>
-  <v-dialog :model-value="isOpen" max-width="800" @update:model-value="close">
+  <v-dialog
+    :model-value="isOpen"
+    :fullscreen="mobile"
+    :max-width="mobile ? undefined : 800"
+    @update:model-value="close"
+  >
     <v-card>
       <v-progress-linear :indeterminate="submitting" :model-value="submitting ? undefined : 100" />
       <v-card-title>Registrar entrada al evento</v-card-title>

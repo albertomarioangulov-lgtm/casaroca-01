@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useDisplay } from 'vuetify'
+
 definePageMeta({
   middleware: 'auth',
 })
@@ -7,6 +9,7 @@ const route = useRoute()
 const eventId = route.params.id as string
 
 const { can, PERMISSIONS } = usePermissions()
+const { mobile } = useDisplay()
 
 const {
   checkIns,
@@ -313,28 +316,32 @@ onBeforeUnmount(() => {
 
 <template>
   <template v-if="can(PERMISSIONS.CHECKINS_READ)">
-    <div class="d-flex align-center mb-2">
+    <!-- Navegación superior -->
+    <div class="d-flex align-center flex-wrap ga-2 mb-2">
       <v-btn
         variant="text"
         color="primary"
         prepend-icon="mdi-arrow-left"
-        class="mr-2"
+        size="small"
         @click="navigateTo('/events')"
       >
         Volver a eventos
       </v-btn>
-      <v-btn
+      <v-chip
         v-if="parentEventId"
         variant="tonal"
         color="primary"
         prepend-icon="mdi-arrow-up"
+        size="small"
+        clickable
         @click="goToParentEvent"
       >
-        Ir al evento padre{{ parentEventName ? `: ${parentEventName}` : '' }}
-      </v-btn>
+        {{ mobile ? 'Evento padre' : (parentEventName ? `Padre: ${parentEventName}` : 'Evento padre') }}
+      </v-chip>
     </div>
 
-    <div class="d-flex align-center mb-2">
+    <!-- Header: título + acciones principales -->
+    <div class="d-flex align-center flex-wrap ga-2 mb-2">
       <h2 class="text-h6 font-weight-bold mt-0">
         {{ eventName || 'Evento' }}
       </h2>
@@ -343,41 +350,84 @@ onBeforeUnmount(() => {
         size="small"
         :color="isEventActive ? 'green' : 'orange'"
         variant="tonal"
-        class="ml-3"
       >
         {{ statusLabel }}
       </v-chip>
-      <v-spacer />
-      <v-btn
-        v-if="!isEventActive && can(PERMISSIONS.EVENTS_UPDATE) && eventStatus === 'scheduled'"
-        color="green"
-        prepend-icon="mdi-play-circle-outline"
-        class="mr-2"
-        :loading="activating"
-        :disabled="!isParentEvent && !parentEventActive"
-        @click="activateEvent"
-      >
-        Activar evento
-      </v-btn>
-      <v-btn
-        v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled"
-        color="primary"
-        prepend-icon="mdi-card-account-details-outline"
-        class="mr-2"
-        :disabled="!isEventActive"
-        @click="openWelcomeCard"
-      >
-        Registrar nuevo (Tarjeta de Conexión)
-      </v-btn>
-      <v-btn
-        v-if="can(PERMISSIONS.CHECKINS_CREATE)"
-        color="primary"
-        prepend-icon="mdi-clipboard-arrow-left"
-        :disabled="!isEventActive"
-        @click="handleOpenCheckIn"
-      >
-        Registrar entrada
-      </v-btn>
+
+      <div class="flex-grow-1 d-none d-sm-flex" />
+
+      <!-- Acciones en escritorio: botones con texto -->
+      <template v-if="!mobile">
+        <v-btn
+          v-if="!isEventActive && can(PERMISSIONS.EVENTS_UPDATE) && eventStatus === 'scheduled'"
+          color="green"
+          prepend-icon="mdi-play-circle-outline"
+          :loading="activating"
+          :disabled="!isParentEvent && !parentEventActive"
+          @click="activateEvent"
+        >
+          Activar evento
+        </v-btn>
+        <v-btn
+          v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled"
+          color="primary"
+          prepend-icon="mdi-card-account-details-outline"
+          :disabled="!isEventActive"
+          @click="openWelcomeCard"
+        >
+          Registrar nuevo
+        </v-btn>
+        <v-btn
+          v-if="can(PERMISSIONS.CHECKINS_CREATE)"
+          color="primary"
+          prepend-icon="mdi-clipboard-arrow-left"
+          :disabled="!isEventActive"
+          @click="handleOpenCheckIn"
+        >
+          Registrar entrada
+        </v-btn>
+      </template>
+
+      <!-- Acciones en móvil: iconos con tooltip -->
+      <template v-else>
+        <v-tooltip text="Activar evento" location="bottom">
+          <template #activator="{ props }">
+            <v-btn
+              v-if="!isEventActive && can(PERMISSIONS.EVENTS_UPDATE) && eventStatus === 'scheduled'"
+              v-bind="props"
+              color="green"
+              icon="mdi-play-circle-outline"
+              :loading="activating"
+              :disabled="!isParentEvent && !parentEventActive"
+              @click="activateEvent"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip text="Registrar nuevo" location="bottom">
+          <template #activator="{ props }">
+            <v-btn
+              v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled"
+              v-bind="props"
+              color="primary"
+              icon="mdi-card-account-details-outline"
+              :disabled="!isEventActive"
+              @click="openWelcomeCard"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip text="Registrar entrada" location="bottom">
+          <template #activator="{ props }">
+            <v-btn
+              v-if="can(PERMISSIONS.CHECKINS_CREATE)"
+              v-bind="props"
+              color="primary"
+              icon="mdi-clipboard-arrow-left"
+              :disabled="!isEventActive"
+              @click="handleOpenCheckIn"
+            />
+          </template>
+        </v-tooltip>
+      </template>
     </div>
 
     <!-- Aviso si el evento no está activo -->
@@ -436,7 +486,6 @@ onBeforeUnmount(() => {
           variant="tonal"
           size="small"
           prepend-icon="mdi-baby-carriage"
-          class="ml-2"
           :loading="creatingKids"
           @click="createKidsSatellite"
         >
@@ -464,8 +513,10 @@ onBeforeUnmount(() => {
       </v-chip>
     </div>
 
+    <!-- Toolbar de búsqueda -->
     <v-toolbar>
-      <v-text-field flat class="ml-1"
+      <v-text-field
+        flat
         v-model="search"
         prepend-inner-icon="mdi-magnify"
         density="compact"
@@ -475,6 +526,7 @@ onBeforeUnmount(() => {
         placeholder="Buscar por niño, acudiente o manilla..."
       />
       <v-select
+        v-if="!mobile"
         v-model="statusFilter"
         :items="[
           { title: 'Todos', value: '' },
@@ -491,12 +543,41 @@ onBeforeUnmount(() => {
       />
     </v-toolbar>
 
+    <!-- Filtro por estado en móvil: chips táctiles -->
+    <div v-if="mobile" class="d-flex ga-1 mt-2 mb-1">
+      <v-chip
+        size="small"
+        :color="statusFilter === '' ? 'primary' : undefined"
+        :variant="statusFilter === '' ? 'tonal' : 'outlined'"
+        @click="statusFilter = ''"
+      >
+        Todos
+      </v-chip>
+      <v-chip
+        size="small"
+        :color="statusFilter === 'inside' ? 'green' : undefined"
+        :variant="statusFilter === 'inside' ? 'tonal' : 'outlined'"
+        @click="statusFilter = 'inside'"
+      >
+        Dentro
+      </v-chip>
+      <v-chip
+        size="small"
+        :color="statusFilter === 'out' ? 'grey' : undefined"
+        :variant="statusFilter === 'out' ? 'tonal' : 'outlined'"
+        @click="statusFilter = 'out'"
+      >
+        Fuera
+      </v-chip>
+    </div>
+
     <!-- Pestañas de salones / rangos de edad -->
     <v-tabs
       v-if="eventAgeGroups.length > 0 || checkInGroups.length > 1"
       v-model="activeTab"
       color="primary"
       class="mb-2"
+      show-arrows
     >
       <v-tab
         v-for="(group, index) in checkInGroups"
@@ -506,29 +587,130 @@ onBeforeUnmount(() => {
       >
         <span>
           {{ group.name }}
-          <span v-if="group.minAge !== null && group.maxAge !== null" class="ml-1 text-caption text-medium-emphasis">
+          <span v-if="group.minAge !== null && group.maxAge !== null && !mobile" class="ml-1 text-caption text-medium-emphasis">
             ({{ group.minAge }}-{{ group.maxAge }})
           </span>
         </span>
-        <v-chip
-          v-if="hasActiveSearch && group.items.length > 0"
-          size="x-small"
-          color="primary"
-          variant="flat"
-          class="ml-2"
-        >
-          {{ group.items.length }}
-        </v-chip>
-        <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
-          {{ group.inside }}
-        </v-chip>
-        <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
-          {{ group.out }}
-        </v-chip>
+        <template v-if="!mobile">
+          <v-chip
+            v-if="hasActiveSearch && group.items.length > 0"
+            size="x-small"
+            color="primary"
+            variant="flat"
+            class="ml-2"
+          >
+            {{ group.items.length }}
+          </v-chip>
+          <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
+            {{ group.inside }}
+          </v-chip>
+          <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
+            {{ group.out }}
+          </v-chip>
+        </template>
       </v-tab>
     </v-tabs>
 
+    <!-- Resumen del grupo activo en móvil -->
+    <div v-if="mobile && checkInGroups.length" class="d-flex ga-2 mb-2 text-caption text-medium-emphasis">
+      <span class="font-weight-medium">{{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.name }}</span>
+      <v-chip size="x-small" color="green" variant="tonal">
+        Dentro: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.inside ?? 0 }}
+      </v-chip>
+      <v-chip size="x-small" color="grey" variant="tonal">
+        Fuera: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.out ?? 0 }}
+      </v-chip>
+    </div>
+
+    <v-progress-circular
+      v-if="loading && !checkIns.length"
+      indeterminate
+      color="primary"
+      class="d-block mx-auto my-8"
+    />
+
+    <!-- ===== Cards de check-ins (móvil) ===== -->
+    <div v-if="mobile">
+      <v-card
+        v-for="item in activeGroupItems || []"
+        :key="item.id"
+        class="mb-2"
+        variant="outlined"
+      >
+        <v-card-item>
+          <div class="d-flex align-center">
+            <div class="flex-grow-1">
+              <div class="font-weight-bold text-subtitle-2">{{ item.personName }}</div>
+              <div class="text-caption text-medium-emphasis">
+                <template v-if="item.personBirthDate">
+                  {{ new Date(item.personBirthDate).toLocaleDateString() }}
+                </template>
+                <template v-if="item.age !== null">
+                  <template v-if="item.personBirthDate"> · </template>{{ item.age }} años
+                </template>
+              </div>
+            </div>
+            <v-chip
+              v-if="item.checkOutTime"
+              size="small"
+              color="grey"
+              variant="tonal"
+            >
+              {{ new Date(item.checkOutTime).toLocaleTimeString() }}
+            </v-chip>
+            <v-chip
+              v-else
+              size="small"
+              color="green"
+              variant="tonal"
+            >
+              Dentro
+            </v-chip>
+          </div>
+          <v-divider class="my-2" />
+          <div class="d-flex flex-wrap ga-2 align-center">
+            <v-chip
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-tag-text-outline"
+            >
+              {{ item.wristbandNumber || 'Sin manilla' }}
+            </v-chip>
+            <v-chip
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-account-outline"
+            >
+              {{ item.caregiverName || 'Sin acudiente' }}
+            </v-chip>
+            <v-chip
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-clock-in"
+            >
+              {{ new Date(item.checkInTime).toLocaleTimeString() }}
+            </v-chip>
+            <v-spacer />
+            <v-btn
+              v-if="!item.checkOutTime && can(PERMISSIONS.CHECKINS_UPDATE)"
+              size="small"
+              variant="tonal"
+              color="orange"
+              icon="mdi-clipboard-arrow-right"
+              title="Registrar salida"
+              @click="handleOpenCheckOut(item)"
+            />
+          </div>
+        </v-card-item>
+      </v-card>
+      <div v-if="!loading && !activeGroupItems.length" class="text-center py-6 text-medium-emphasis">
+        {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : 'No hay niños registrados en este evento.' }}
+      </div>
+    </div>
+
+    <!-- ===== Tabla de check-ins (escritorio) ===== -->
     <v-data-table-server
+      v-else
       :headers="[
         { title: 'Niño', key: 'childName', sortable: false },
         { title: 'Edad', key: 'age', sortable: false },
@@ -602,7 +784,82 @@ onBeforeUnmount(() => {
         Tarjetas de Conexión ({{ welcomeCards.length }})
       </v-card-title>
       <v-card-text>
+        <!-- Cards para móvil -->
+        <template v-if="mobile">
+          <div v-if="welcomeLoading" class="text-center py-6 text-medium-emphasis">
+            Cargando tarjetas...
+          </div>
+          <template v-else>
+            <v-card
+              v-for="wc in welcomeCards"
+              :key="wc.id"
+              class="mb-2"
+              variant="outlined"
+              @click="navigateTo(`/welcome/${wc.id}`)"
+            >
+              <v-card-item>
+                <div class="d-flex align-center">
+                  <div class="flex-grow-1">
+                    <div class="font-weight-bold text-subtitle-2">{{ wc.name }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      {{ formatDateShort(wc.registrationDate) }}
+                    </div>
+                  </div>
+                  <v-chip
+                    size="small"
+                    :color="wc.visitorType === 'first_time' ? 'blue' : 'orange'"
+                    variant="tonal"
+                  >
+                    {{ wc.visitorType === 'first_time' ? 'Primera vez' : 'Actualiza info' }}
+                  </v-chip>
+                </div>
+                <v-divider class="my-2" />
+                <div class="d-flex flex-wrap ga-2 align-center">
+                  <v-chip
+                    v-if="wc.phone"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="mdi-phone"
+                  >
+                    {{ wc.phone }}
+                  </v-chip>
+                  <v-chip
+                    v-if="wc.email"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="mdi-email"
+                  >
+                    {{ wc.email }}
+                  </v-chip>
+                  <v-chip
+                    v-if="wc.motivations?.length"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="mdi-heart-outline"
+                  >
+                    {{ motivationSummary(wc.motivations) }}
+                  </v-chip>
+                  <v-spacer />
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    icon="mdi-eye-outline"
+                    title="Ver tarjeta"
+                    @click="navigateTo(`/welcome/${wc.id}`)"
+                  />
+                </div>
+              </v-card-item>
+            </v-card>
+            <div v-if="!welcomeCards.length" class="text-center py-6">
+              No hay tarjetas de conexión para este evento aún.
+            </div>
+          </template>
+        </template>
+
+        <!-- Tabla para escritorio -->
         <v-data-table
+          v-else
           :headers="[
             { title: 'Fecha', key: 'registrationDate', sortable: true },
             { title: 'Nombre', key: 'name', sortable: true },
@@ -680,13 +937,29 @@ onBeforeUnmount(() => {
             Puedes activar solo este evento, o también activarlos a la vez (recomendado para servicios en paralelo).
           </p>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="confirmDialog = false">Cancelar</v-btn>
-          <v-btn color="orange" variant="tonal" :loading="activating" @click="activateOnlyThis">
+        <v-card-actions :class="mobile ? 'flex-column' : ''">
+          <v-btn
+            variant="text"
+            :class="mobile ? 'w-100' : ''"
+            @click="confirmDialog = false"
+          >
+            Cancelar
+          </v-btn>
+          <v-btn
+            color="orange"
+            variant="tonal"
+            :loading="activating"
+            :class="mobile ? 'w-100' : ''"
+            @click="activateOnlyThis"
+          >
             Solo este evento
           </v-btn>
-          <v-btn color="green" :loading="activating" @click="activateAll">
+          <v-btn
+            color="green"
+            :loading="activating"
+            :class="mobile ? 'w-100' : ''"
+            @click="activateAll"
+          >
             Activar todos
           </v-btn>
         </v-card-actions>

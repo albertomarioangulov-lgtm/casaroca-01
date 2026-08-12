@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
+
+const { mobile } = useDisplay()
 
 const emit = defineEmits<{
   (e: 'saved'): void
@@ -147,7 +150,12 @@ const submit = async () => {
 </script>
 
 <template>
-  <v-dialog :model-value="isCheckOutOpen" max-width="600" @update:model-value="close">
+  <v-dialog
+    :model-value="isCheckOutOpen"
+    :fullscreen="mobile"
+    :max-width="mobile ? undefined : 600"
+    @update:model-value="close"
+  >
     <v-card>
       <v-progress-linear :indeterminate="submitting" :model-value="submitting ? undefined : 100" />
       <v-card-title>Registrar salida</v-card-title>
