@@ -12,9 +12,9 @@ export default defineEventHandler(async (event) => {
 
   // Consulta ligera: solo datos de estado del evento, sin childEvents ni conteos
   const eventDoc = await Event.findById(id)
-    .populate('ministry', 'name ageGroups')
+    .populate('ministry', 'name code ageGroups')
     .populate('parentEvent', 'name status')
-    .select('name status welcomeEnabled ministry parentEvent')
+    .select('name status welcomeEnabled requireWristband trackCheckOut ministry parentEvent')
     .lean()
 
   if (!eventDoc) {
@@ -27,7 +27,10 @@ export default defineEventHandler(async (event) => {
     name: e.name ?? '',
     status: e.status ?? '',
     welcomeEnabled: e.welcomeEnabled ?? true,
+    requireWristband: e.requireWristband ?? false,
+    trackCheckOut: e.trackCheckOut ?? false,
     ministryName: e.ministry?.name ?? '',
+    ministryCode: e.ministry?.code ?? '',
     ageGroups: e.ministry?.ageGroups ?? [],
     parentEventId: e.parentEvent?._id?.toString?.() ?? e.parentEvent?.toString?.() ?? '',
     parentEventName: e.parentEvent?.name ?? '',

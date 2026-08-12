@@ -3,6 +3,7 @@ import { Event } from '~~/server/models/Event'
 import { Ministry } from '~~/server/models/Ministry'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const createEventSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido'),
@@ -15,6 +16,8 @@ const createEventSchema = z.object({
   parentEventId: z.string().optional(),
   includeRokaKids: z.boolean().optional(),
   welcomeEnabled: z.boolean().optional(),
+  requireWristband: z.boolean().optional(),
+  trackCheckOut: z.boolean().optional(),
   type: z.enum(['regular', 'welcome', 'baptism', 'outreach']).optional(),
   status: z.enum(['scheduled', 'active', 'finished', 'cancelled']).optional(),
 })
@@ -45,7 +48,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { name, description, date, startTime, endTime, location, ministryId, parentEventId, includeRokaKids, welcomeEnabled, type, status } = result.data
+  const { name, description, date, startTime, endTime, location, ministryId, parentEventId, includeRokaKids, welcomeEnabled, requireWristband, trackCheckOut, type, status } = result.data
 
   // Validar ministerio si se envía
   if (ministryId) {
@@ -71,13 +74,15 @@ export default defineEventHandler(async (event) => {
   const eventDoc = await Event.create({
     name,
     description,
-    date: new Date(date),
+    date: parseDateOnly(date),
     startTime,
     endTime,
     location,
     ministry: ministryId || undefined,
     parentEvent: parentEventId || undefined,
     welcomeEnabled: welcomeEnabled ?? true,
+    requireWristband: requireWristband ?? false,
+    trackCheckOut: trackCheckOut ?? false,
     type: type ?? 'regular',
     status: status ?? 'scheduled',
     ageGroupsSnapshot,
@@ -111,13 +116,15 @@ export default defineEventHandler(async (event) => {
       } else {
         const childEvent = await Event.create({
           name: `${name} — ${kidsMinistry.name}`,
-          date: new Date(date),
+          date: parseDateOnly(date),
           startTime,
           endTime,
           location,
           ministry: kidsMinistry._id,
           parentEvent: eventDoc._id,
           welcomeEnabled: false, // los niños no llenan tarjetas
+          requireWristband: true, // RocaKids siempre usa manilla
+          trackCheckOut: true, // RocaKids siempre registra salida dentro/fuera
           type: 'regular',
           status: status ?? 'scheduled',
         })

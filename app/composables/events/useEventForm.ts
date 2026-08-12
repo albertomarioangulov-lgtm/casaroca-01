@@ -11,6 +11,8 @@ export const eventFormSchema = z.object({
   parentEventId: z.string().optional(),
   includeRokaKids: z.boolean().optional(),
   welcomeEnabled: z.boolean().optional(),
+  requireWristband: z.boolean().optional(),
+  trackCheckOut: z.boolean().optional(),
 })
 
 export type EventFormData = z.infer<typeof eventFormSchema>
@@ -61,6 +63,8 @@ export const useEventForm = () => {
       parentEventId?: string
       includeRokaKids?: boolean
       welcomeEnabled?: boolean
+      requireWristband?: boolean
+      trackCheckOut?: boolean
     },
     eventId?: string
   ): Promise<{ success: boolean; warning?: string }> => {

@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { eventFormSchema } from '~/composables/events/useEventForm'
 import { useEventUI } from '~/composables/events/useEventUI'
-import { formatDateInput } from '~/utils/dates'
+import { formatDateInput, toDateInputValue } from '~/utils/dates'
 
 const emit = defineEmits<{
   (e: 'saved'): void
@@ -48,6 +48,8 @@ const form = reactive({
   parentEventId: '',
   includeRokaKids: false,
   welcomeEnabled: true,
+  requireWristband: false,
+  trackCheckOut: false,
 })
 
 // Ministerios para el selector
@@ -94,13 +96,15 @@ const checkKidsMinistry = async () => {
 watch(selectedEvent, (newEvent) => {
   if (newEvent) {
     form.name = newEvent.name || ''
-    form.date = newEvent.date ? (new Date(newEvent.date).toISOString().split('T')[0] ?? '') : ''
+    form.date = toDateInputValue(newEvent.date)
     form.startTime = newEvent.startTime || ''
     form.endTime = newEvent.endTime || ''
     form.status = newEvent.status || 'scheduled'
     form.ministryId = newEvent.ministryId || ''
     form.parentEventId = newEvent.parentEventId || ''
     form.welcomeEnabled = newEvent.welcomeEnabled ?? true
+    form.requireWristband = newEvent.requireWristband ?? false
+    form.trackCheckOut = newEvent.trackCheckOut ?? false
     // includeRokaKids solo aplica al crear (no se restaura al editar)
   } else {
     form.name = ''
@@ -112,6 +116,8 @@ watch(selectedEvent, (newEvent) => {
     form.parentEventId = ''
     form.includeRokaKids = false
     form.welcomeEnabled = true
+    form.requireWristband = false
+    form.trackCheckOut = false
   }
 }, { immediate: true })
 
@@ -131,6 +137,8 @@ watch(isFormOpen, async (isOpen) => {
       form.parentEventId = ''
       form.includeRokaKids = false
       form.welcomeEnabled = true
+      form.requireWristband = false
+      form.trackCheckOut = false
     }
   }
 })
@@ -152,6 +160,8 @@ const submit = async () => {
       parentEventId: form.parentEventId || undefined,
       includeRokaKids: isEditing ? undefined : form.includeRokaKids,
       welcomeEnabled: form.welcomeEnabled,
+      requireWristband: form.requireWristband,
+      trackCheckOut: form.trackCheckOut,
     },
     selectedEvent.value?.id
   )
@@ -248,10 +258,31 @@ const submit = async () => {
               />
             </v-col>
 
+            <v-col cols="12" md="12">
+              <v-switch
+                v-model="form.requireWristband"
+                color="primary"
+                label="Requerir número de manilla por persona"
+                hint="Al registrar entrada pedirá un número de manilla/pulsera para cada persona. Los eventos de niños (RocaKids) siempre lo requieren."
+                persistent-hint
+              />
+            </v-col>
+
+            <v-col cols="12" md="12">
+              <v-switch
+                v-model="form.trackCheckOut"
+                color="primary"
+                label="Registrar salida (dentro/fuera)"
+                hint="Muestra el botón de salida y los contadores de dentro/fuera. Los eventos de niños (RocaKids) siempre lo registran."
+                persistent-hint
+              />
+            </v-col>
+
             <v-col cols="12" md="6">
               <v-date-input
                 v-model="form.date"
                 label="Fecha"
+                value-format="YYYY-MM-DD"
                 required
                 :rules="rules.date"
               />

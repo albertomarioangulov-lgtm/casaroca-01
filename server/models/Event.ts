@@ -10,6 +10,10 @@ const eventSchema = new Schema({
   ministry: { type: Schema.Types.ObjectId, ref: 'Ministry' }, // ministerio al que pertenece el evento
   parentEvent: { type: Schema.Types.ObjectId, ref: 'Event', default: null }, // evento padre (ej. RokaKids es satélite del servicio de domingo)
   welcomeEnabled: { type: Boolean, default: true }, // si el ministerio de Bienvenida (Nicodemo) recibe nuevos en este evento
+  // Si el check-in de este evento requiere asignar número de manilla/pulsera por persona
+  requireWristband: { type: Boolean, default: false },
+  // Si el check-in de este evento registra salida (concepto dentro/fuera)
+  trackCheckOut: { type: Boolean, default: false },
   // Snapshot de los salones/rangos de edad usados en ESTE evento (congelado al crear/activar).
   // Permite reconstruir la distribución histórica aunque el ministerio cambie los rangos después.
   ageGroupsSnapshot: [

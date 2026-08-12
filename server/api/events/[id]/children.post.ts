@@ -53,6 +53,8 @@ export default defineEventHandler(async (event) => {
     ministry: kidsMinistry._id,
     parentEvent: parentEvent._id,
     welcomeEnabled: false,
+    requireWristband: true, // RocaKids siempre usa manilla
+    trackCheckOut: true, // RocaKids siempre registra salida dentro/fuera
     type: 'regular',
     status: parentEvent.status,
   })

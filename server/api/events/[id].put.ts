@@ -3,6 +3,7 @@ import { Event } from '~~/server/models/Event'
 import { Ministry } from '~~/server/models/Ministry'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const updateEventSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').optional(),
@@ -14,6 +15,8 @@ const updateEventSchema = z.object({
   ministryId: z.string().nullable().optional(),
   parentEventId: z.string().nullable().optional(),
   welcomeEnabled: z.boolean().optional(),
+  requireWristband: z.boolean().optional(),
+  trackCheckOut: z.boolean().optional(),
   activateChildren: z.boolean().optional(), // al activar un evento principal, activa también sus satélites
   type: z.enum(['regular', 'welcome', 'baptism', 'outreach']).optional(),
   status: z.enum(['scheduled', 'active', 'finished', 'cancelled']).optional(),
@@ -40,7 +43,7 @@ export default defineEventHandler(async (event) => {
 
   const updateData: Record<string, any> = { ...result.data }
   if ('date' in updateData && updateData.date) {
-    updateData.date = new Date(updateData.date)
+    updateData.date = parseDateOnly(updateData.date)
   }
   for (const field of ['description', 'startTime', 'endTime', 'location']) {
     if (field in updateData && !updateData[field]) {

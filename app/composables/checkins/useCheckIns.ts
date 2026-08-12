@@ -15,8 +15,11 @@ export const useCheckIns = () => {
   const selectedCheckIn = useState<Record<string, any> | null>('checkout-selected', () => null)
 
   let searchTimeout: ReturnType<typeof setTimeout> | null = null
+  // Contador para descartar respuestas obsoletas (al cambiar de evento/tab rápido)
+  let fetchSeq = 0
 
   const fetchCheckIns = async (eventId: string) => {
+    const seq = ++fetchSeq
     error.value = ''
     loading.value = true
     try {
@@ -26,17 +29,22 @@ export const useCheckIns = () => {
           status: statusFilter.value || undefined,
         },
       }) as any
+      // Si llegó una petición más reciente, descartar esta respuesta
+      if (seq !== fetchSeq) return
       checkIns.value = result.items
       totalInside.value = result.totalInside
       totalOut.value = result.totalOut
     } catch (err: any) {
+      if (seq !== fetchSeq) return
       if (err?.statusCode === 403) {
         error.value = 'No tienes permiso para ver los registros del evento'
       } else {
         error.value = err?.data?.statusMessage || 'Error al cargar los registros del evento'
       }
     } finally {
-      loading.value = false
+      if (seq === fetchSeq) {
+        loading.value = false
+      }
     }
   }
 
@@ -51,12 +59,16 @@ export const useCheckIns = () => {
       }) as any
       const checkIns = response?.checkIns ?? []
       if (checkIns.length > 0) {
-        const lines = checkIns.map((ci: any) =>
-          ci.ageGroupName && ci.ageGroupName !== 'Sin grupo'
-            ? `${ci.name || ci.personId}: ${ci.ageGroupName}`
-            : `${ci.name || ci.personId}: sin salón asignado`
-        )
-        successMessage.value = `Ingreso registrado. Salones:\n${lines.join('\n')}`
+        const lines = checkIns.map((ci: any) => {
+          if (ci.ageGroupName && ci.ageGroupName !== 'Sin grupo') {
+            return `${ci.name || ci.personId}: ${ci.ageGroupName}`
+          }
+          if (ci.ageGroupName !== undefined) {
+            return `${ci.name || ci.personId}: sin salón asignado`
+          }
+          return ci.name || ci.personId
+        })
+        successMessage.value = `Registrado:\n${lines.join('\n')}`
       } else {
         successMessage.value = 'Ingreso registrado correctamente'
       }
@@ -79,7 +91,7 @@ export const useCheckIns = () => {
     isCheckOutOpen.value = false
   }
 
-  const checkOut = async (payload: { wristbandNumber: string; caregiverId: string }) => {
+  const checkOut = async (payload: { wristbandNumber?: string; caregiverId?: string }) => {
     const checkInId = selectedCheckIn.value?.id
     if (!checkInId) return false
 

@@ -27,7 +27,10 @@ const {
 
 const eventName = ref('')
 const eventMinistryName = ref('')
+const eventMinistryCode = ref('')
 const eventAgeGroups = ref<Array<Record<string, any>>>([])
+const eventRequireWristband = ref(false)
+const eventTrackCheckOut = ref(true)
 const welcomeEnabled = ref(true)
 const eventLoaded = ref(false)
 const eventStatus = ref('')
@@ -37,6 +40,9 @@ const parentEventId = ref('')
 const parentEventName = ref('')
 const parentEventActive = ref(false)
 const childEvents = ref<Array<Record<string, any>>>([])
+// Contadores del evento principal para su tab (independientes del evento activo)
+const mainTabInside = ref(0)
+const mainTabOut = ref(0)
 const creatingKids = ref(false)
 const kidsError = ref('')
 const confirmDialog = ref(false)
@@ -44,6 +50,94 @@ const welcomeCards = ref<Array<Record<string, any>>>([])
 const welcomeLoading = ref(false)
 const checkInFormRef = ref<any>(null)
 const checkOutFormRef = ref<any>(null)
+
+// ===== Tabs de nivel evento (solo en el evento principal) =====
+// Tab 0: Evento principal (asistencia)
+// Tab 1..n: satélites (asistencia de cada ministerio)
+// Tab n+1: Tarjetas de Conexión (siempre del evento principal)
+const activeEventTab = ref<number>(0)
+
+const welcomeTabIndex = computed(() => childEvents.value.length + 1)
+
+const isWelcomeTab = computed(() => activeEventTab.value === welcomeTabIndex.value)
+
+// ¿La página actual es un evento principal (muestra tabs de ministerios)?
+const showEventTabs = computed(() => isParentEvent.value)
+
+const activeChildEvent = computed<Record<string, any> | null>(() => {
+  const idx = activeEventTab.value - 1
+  if (idx >= 0 && idx < childEvents.value.length) return childEvents.value[idx] ?? null
+  return null
+})
+
+// El evento sobre el que opera la asistencia actualmente
+const activeEventId = computed(() => activeChildEvent.value?.id ?? eventId)
+
+// Estado / configuración del evento activo (relevante en tabs de asistencia)
+const activeEventStatus = computed(() => activeChildEvent.value?.status ?? eventStatus.value)
+
+const activeEventAgeGroups = computed(() =>
+  activeChildEvent.value?.ageGroups?.length
+    ? activeChildEvent.value.ageGroups
+    : eventAgeGroups.value
+)
+
+// ¿El ministerio es de niños (RocaKids/RokaKids)?
+const isKidsMinistry = (code: string, name: string): boolean => {
+  const c = (code || '').toLowerCase()
+  const n = (name || '').toLowerCase()
+  return /roca\s*kids/.test(n) || /roca\s*kids/.test(c) || c === 'rokakids' || c === 'rocakids'
+}
+
+const activeEventMinistryName = computed(() => activeChildEvent.value?.ministryName ?? eventMinistryName.value)
+const activeEventMinistryCode = computed(() => activeChildEvent.value?.ministryCode ?? eventMinistryCode.value)
+
+// ¿El evento activo es de RocaKids? (buscar acudiente solo aplica aquí)
+const activeEventIsKids = computed(() => isKidsMinistry(activeEventMinistryCode.value, activeEventMinistryName.value))
+
+// ¿El evento activo requiere manilla? RocaKids siempre la requiere.
+const activeEventRequireWristband = computed(() => {
+  if (activeEventIsKids.value) return true
+  return activeChildEvent.value?.requireWristband ?? eventRequireWristband.value
+})
+
+// ¿El evento activo registra salida (dentro/fuera)? RocaKids siempre la registra.
+const activeEventTrackCheckOut = computed(() => {
+  if (activeEventIsKids.value) return true
+  return activeChildEvent.value?.trackCheckOut ?? eventTrackCheckOut.value
+})
+
+// Columnas de la tabla según el tipo/configuración del evento activo
+const checkInHeaders = computed(() => {
+  const headers: Array<Record<string, any>> = [
+    { title: activeEventIsKids.value ? 'Niño' : 'Persona', key: 'childName', sortable: false },
+    { title: 'Edad', key: 'age', sortable: false },
+  ]
+  if (activeEventRequireWristband.value) {
+    headers.push({ title: 'Manilla', key: 'wristbandNumber', sortable: false })
+  }
+  if (activeEventIsKids.value) {
+    headers.push({ title: 'Acudiente que entregó', key: 'caregiverName', sortable: false })
+  }
+  headers.push({ title: 'Hora ingreso', key: 'checkInTime', sortable: false })
+  if (activeEventTrackCheckOut.value) {
+    headers.push({ title: 'Salida', key: 'checkOutTime', sortable: false })
+    headers.push({ title: 'Acciones', key: 'actions', sortable: false })
+  }
+  return headers
+})
+
+const isActiveEvent = computed(() => activeEventStatus.value === 'active')
+
+const activeStatusLabel = computed(() => {
+  const map: Record<string, string> = {
+    scheduled: 'programado',
+    active: 'activo',
+    finished: 'finalizado',
+    cancelled: 'cancelado',
+  }
+  return map[activeEventStatus.value] || activeEventStatus.value
+})
 
 const fetchWelcomeCards = async () => {
   welcomeLoading.value = true
@@ -82,12 +176,17 @@ const fetchEvent = async () => {
     eventMinistryName.value = result.ministryName || ''
     eventAgeGroups.value = result.ageGroups ?? []
     welcomeEnabled.value = result.welcomeEnabled ?? true
+    eventMinistryCode.value = result.ministryCode || ''
+    eventRequireWristband.value = result.requireWristband ?? false
+    eventTrackCheckOut.value = result.trackCheckOut ?? false
     eventStatus.value = result.status || ''
     parentEventId.value = result.parentEventId || ''
     parentEventName.value = result.parentEventName || ''
     parentEventActive.value = result.parentEventActive ?? false
     isParentEvent.value = !result.parentEventId
     childEvents.value = result.childEvents ?? []
+    mainTabInside.value = result.totalInside ?? 0
+    mainTabOut.value = result.totalOut ?? 0
     kidsError.value = ''
   } catch {
     eventName.value = ''
@@ -109,6 +208,9 @@ const fetchEventStatus = async () => {
       parentEventActive.value = result.parentEventActive ?? false
       eventName.value = result.name || eventName.value
       eventMinistryName.value = result.ministryName ?? eventMinistryName.value
+      if (result.ministryCode) eventMinistryCode.value = result.ministryCode
+      if (result.requireWristband !== undefined) eventRequireWristband.value = result.requireWristband
+      if (result.trackCheckOut !== undefined) eventTrackCheckOut.value = result.trackCheckOut
       if (result.ageGroups) eventAgeGroups.value = result.ageGroups
       eventLoaded.value = true
     }
@@ -123,23 +225,50 @@ const goToParentEvent = () => {
   }
 }
 
-const isEventActive = computed(() => eventStatus.value === 'active')
-
-const statusLabel = computed(() => {
-  const map: Record<string, string> = {
-    scheduled: 'programado',
-    active: 'activo',
-    finished: 'finalizado',
-    cancelled: 'cancelado',
+const goToMainEventTab = () => {
+  // En la vista de un satélite (sin tabs), navegar al padre; en el tab de satélite, volver al tab principal
+  if (!isParentEvent.value) {
+    goToParentEvent()
+    return
   }
-  return map[eventStatus.value] || eventStatus.value
-})
+  activeEventTab.value = 0
+  handleActiveEventTabChange()
+}
+
+// Pestaña activa del selector de salones
+const activeTab = ref<number>(0)
 
 // Evento principal con hijos en estado 'scheduled' → se pregunta si activarlos también
 const hasPendingChildren = computed(() =>
   isParentEvent.value &&
   childEvents.value.some((c: Record<string, any>) => c.status === 'scheduled')
 )
+
+// Sincroniza los contadores del evento activo en su entrada de childEvents,
+// para que el chip del tab coincida con la tabla interna sin esperar fetchEvent.
+const syncActiveChildCounters = () => {
+  if (!activeChildEvent.value) return
+  const childId = activeChildEvent.value.id
+  childEvents.value = childEvents.value.map((c: Record<string, any>) =>
+    c.id === childId
+      ? { ...c, totalInside: totalInside.value, totalOut: totalOut.value }
+      : c
+  )
+}
+
+// Al cambiar de tab de evento: resetear búsqueda/salones y cargar el evento activo
+const handleActiveEventTabChange = () => {
+  activeTab.value = 0
+  search.value = ''
+  statusFilter.value = ''
+  // Re-traer childEvents para actualizar los contadores de todos los tabs de satélites
+  fetchEvent()
+  if (isWelcomeTab.value) {
+    fetchWelcomeCards()
+  } else {
+    fetchCheckIns(activeEventId.value)
+  }
+}
 
 // Agrupar check-ins por salón/rango de edad. Los salones se pre-crean desde
 // los ageGroups configurados en el ministerio (aunque aún no tengan niños),
@@ -148,8 +277,8 @@ const checkInGroups = computed(() => {
   const groups = new Map<string, { name: string; index: number; minAge: number | null; maxAge: number | null; items: any[]; inside: number; out: number }>()
   const ungrouped = { name: 'Sin grupo', index: -1, minAge: null, maxAge: null, items: [] as any[], inside: 0, out: 0 }
 
-  // Pre-crear los salones configurados del ministerio
-  ;(eventAgeGroups.value || []).forEach((g: any, i: number) => {
+  // Pre-crear los salones configurados del ministerio (del evento activo)
+  ;(activeEventAgeGroups.value || []).forEach((g: any, i: number) => {
     groups.set(`g${i}`, {
       name: g.name || `Grupo ${i + 1}`,
       index: i,
@@ -184,9 +313,6 @@ const checkInGroups = computed(() => {
   return sorted
 })
 
-// Pestaña activa del selector de salones
-const activeTab = ref<number>(0)
-
 // ¿Hay una búsqueda activa?
 const hasActiveSearch = computed(() => (search.value || '').trim().length > 0)
 
@@ -218,7 +344,7 @@ const doActivate = async (activateChildren: boolean) => {
   error.value = ''
   confirmDialog.value = false
   try {
-    const response = await $fetch(`/api/events/${eventId}`, {
+    const response = await $fetch(`/api/events/${activeEventId.value}`, {
       method: 'PUT',
       body: { status: 'active', activateChildren },
     }) as any
@@ -236,7 +362,8 @@ const doActivate = async (activateChildren: boolean) => {
 }
 
 const activateEvent = () => {
-  if (hasPendingChildren.value) {
+  // Solo el tab del evento principal puede confirmar activación en cascada
+  if (activeEventTab.value === 0 && hasPendingChildren.value) {
     confirmDialog.value = true
   } else {
     doActivate(false)
@@ -270,11 +397,15 @@ const createKidsSatellite = async () => {
 }
 
 const handleCheckInSaved = () => {
-  fetchCheckIns(eventId)
+  fetchCheckIns(activeEventId.value)
+  syncActiveChildCounters()
+  fetchEvent()
 }
 
 const handleCheckOutSaved = () => {
-  fetchCheckIns(eventId)
+  fetchCheckIns(activeEventId.value)
+  syncActiveChildCounters()
+  fetchEvent()
 }
 
 const handleOpenCheckIn = () => {
@@ -288,21 +419,23 @@ const handleOpenCheckOut = (checkIn: Record<string, any>) => {
 let searchWatchTimeout: ReturnType<typeof setTimeout> | null = null
 
 watch(search, () => {
+  if (isWelcomeTab.value) return
   if (searchWatchTimeout) clearTimeout(searchWatchTimeout)
   searchWatchTimeout = setTimeout(() => {
-    fetchCheckIns(eventId)
+    fetchCheckIns(activeEventId.value)
   }, 400)
 })
 
 watch(statusFilter, () => {
-  fetchCheckIns(eventId)
+  if (isWelcomeTab.value) return
+  fetchCheckIns(activeEventId.value)
 })
 
 onMounted(() => {
   if (can(PERMISSIONS.CHECKINS_READ)) {
     fetchEventStatus()
     fetchEvent()
-    fetchCheckIns(eventId)
+    fetchCheckIns(activeEventId.value)
     if (can(PERMISSIONS.WELCOME_CARDS_READ)) {
       fetchWelcomeCards()
     }
@@ -346,12 +479,12 @@ onBeforeUnmount(() => {
         {{ eventName || 'Evento' }}
       </h2>
       <v-chip
-        v-if="eventLoaded && eventStatus"
+        v-if="eventLoaded && activeEventStatus"
         size="small"
-        :color="isEventActive ? 'green' : 'orange'"
+        :color="isActiveEvent ? 'green' : 'orange'"
         variant="tonal"
       >
-        {{ statusLabel }}
+        {{ activeStatusLabel }}
       </v-chip>
 
       <div class="flex-grow-1 d-none d-sm-flex" />
@@ -359,29 +492,29 @@ onBeforeUnmount(() => {
       <!-- Acciones en escritorio: botones con texto -->
       <template v-if="!mobile">
         <v-btn
-          v-if="!isEventActive && can(PERMISSIONS.EVENTS_UPDATE) && eventStatus === 'scheduled'"
+          v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab"
           color="green"
           prepend-icon="mdi-play-circle-outline"
           :loading="activating"
-          :disabled="!isParentEvent && !parentEventActive"
+          :disabled="(!isParentEvent || activeEventTab > 0) && !parentEventActive"
           @click="activateEvent"
         >
           Activar evento
         </v-btn>
         <v-btn
-          v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled"
+          v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab)"
           color="primary"
           prepend-icon="mdi-card-account-details-outline"
-          :disabled="!isEventActive"
+          :disabled="!isActiveEvent"
           @click="openWelcomeCard"
         >
           Registrar nuevo
         </v-btn>
         <v-btn
-          v-if="can(PERMISSIONS.CHECKINS_CREATE)"
+          v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab"
           color="primary"
           prepend-icon="mdi-clipboard-arrow-left"
-          :disabled="!isEventActive"
+          :disabled="!isActiveEvent"
           @click="handleOpenCheckIn"
         >
           Registrar entrada
@@ -393,12 +526,12 @@ onBeforeUnmount(() => {
         <v-tooltip text="Activar evento" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="!isEventActive && can(PERMISSIONS.EVENTS_UPDATE) && eventStatus === 'scheduled'"
+              v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab"
               v-bind="props"
               color="green"
               icon="mdi-play-circle-outline"
               :loading="activating"
-              :disabled="!isParentEvent && !parentEventActive"
+              :disabled="(!isParentEvent || activeEventTab > 0) && !parentEventActive"
               @click="activateEvent"
             />
           </template>
@@ -406,11 +539,11 @@ onBeforeUnmount(() => {
         <v-tooltip text="Registrar nuevo" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled"
+              v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab)"
               v-bind="props"
               color="primary"
               icon="mdi-card-account-details-outline"
-              :disabled="!isEventActive"
+              :disabled="!isActiveEvent"
               @click="openWelcomeCard"
             />
           </template>
@@ -418,11 +551,11 @@ onBeforeUnmount(() => {
         <v-tooltip text="Registrar entrada" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="can(PERMISSIONS.CHECKINS_CREATE)"
+              v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab"
               v-bind="props"
               color="primary"
               icon="mdi-clipboard-arrow-left"
-              :disabled="!isEventActive"
+              :disabled="!isActiveEvent"
               @click="handleOpenCheckIn"
             />
           </template>
@@ -430,72 +563,94 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Aviso si el evento no está activo -->
+    <!-- Tabs de nivel evento: ministerios que atienden + tarjetas de conexión -->
+    <div v-if="showEventTabs" class="d-flex align-center flex-wrap mb-2">
+      <v-tabs
+        v-model="activeEventTab"
+        color="primary"
+        class="flex-grow-1"
+        show-arrows
+        @update:model-value="handleActiveEventTabChange"
+      >
+        <v-tab :value="0" class="min-w-tab">
+          <span>Evento principal</span>
+          <template v-if="!mobile">
+            <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
+              {{ mainTabInside }}
+            </v-chip>
+            <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
+              {{ mainTabOut }}
+            </v-chip>
+          </template>
+        </v-tab>
+        <v-tab
+          v-for="(child, i) in childEvents"
+          :key="child.id"
+          :value="i + 1"
+          class="min-w-tab"
+        >
+          <span>{{ child.ministryName || child.name }}</span>
+          <template v-if="!mobile">
+            <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
+              {{ child.totalInside ?? 0 }}
+            </v-chip>
+            <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
+              {{ child.totalOut ?? 0 }}
+            </v-chip>
+          </template>
+        </v-tab>
+        <v-tab :value="welcomeTabIndex" class="min-w-tab">
+          <span>Tarjetas de Conexión</span>
+          <v-chip v-if="!mobile" size="x-small" class="ml-2" color="primary" variant="tonal">
+            {{ welcomeCards.length }}
+          </v-chip>
+        </v-tab>
+      </v-tabs>
+      <v-btn
+        v-if="can(PERMISSIONS.EVENTS_CREATE)"
+        color="secondary"
+        variant="tonal"
+        size="small"
+        prepend-icon="mdi-baby-carriage"
+        :loading="creatingKids"
+        class="ml-2"
+        @click="createKidsSatellite"
+      >
+        Crear satélite RocaKids
+      </v-btn>
+    </div>
+    <v-alert v-if="kidsError" type="error" dense class="mb-3" closable @click:close="kidsError = ''">
+      {{ kidsError }}
+    </v-alert>
+
+    <!-- Aviso si el evento activo no está activo -->
     <v-alert
-      v-if="eventLoaded && !isEventActive"
+      v-if="eventLoaded && !isActiveEvent && !isWelcomeTab"
       transition="false"
       type="warning"
       variant="tonal"
       class="mb-4"
-      :title="`El evento está ${statusLabel}`"
+      :title="`El evento está ${activeStatusLabel}`"
     >
-      <template v-if="eventStatus === 'scheduled' && !isParentEvent && !parentEventActive">
+      <template v-if="(!isParentEvent || activeEventTab > 0) && activeEventStatus === 'scheduled' && !parentEventActive">
         Primero debes activar el evento principal:
         <v-btn
           variant="text"
           color="primary"
           size="small"
           class="ml-1"
-          @click="goToParentEvent"
+          @click="goToMainEventTab"
         >
-          {{ parentEventName || 'Ir al evento padre' }}
+          {{ isParentEvent ? 'Ir al evento principal' : (parentEventName || 'Ir al evento padre') }}
         </v-btn>
       </template>
-      <template v-else-if="eventStatus === 'scheduled'">
+      <template v-else-if="activeEventStatus === 'scheduled'">
         Actívalo para poder registrar asistencia y nuevos.
       </template>
       <template v-else>
         No se puede registrar asistencia ni nuevos en este evento.
       </template>
     </v-alert>
-
-    <!-- Eventos vinculados (satélites de otros ministerios) -->
-    <v-card v-if="childEvents.length || isParentEvent" class="mb-4" variant="outlined">
-      <v-card-text class="d-flex align-center flex-wrap ga-2">
-        <span class="text-body-2 font-weight-bold">Ministerios que atienden en este evento:</span>
-        <template v-if="childEvents.length">
-          <v-chip
-            v-for="child in childEvents"
-            :key="child.id"
-            :color="child.ministryColor || 'primary'"
-            variant="tonal"
-            :prepend-icon="child.ministryIcon || 'mdi-church-outline'"
-            class="ma-1"
-            clickable
-            @click="navigateTo(`/events/${child.id}`)"
-          >
-            {{ child.ministryName || 'Ver' }} ({{ child.checkInCount }})
-          </v-chip>
-        </template>
-        <span v-else class="text-body-2 text-medium-emphasis">
-          No hay ministerios vinculados aún.
-        </span>
-        <v-btn
-          v-if="can(PERMISSIONS.EVENTS_CREATE)"
-          color="secondary"
-          variant="tonal"
-          size="small"
-          prepend-icon="mdi-baby-carriage"
-          :loading="creatingKids"
-          @click="createKidsSatellite"
-        >
-          Crear satélite RocaKids
-        </v-btn>
-      </v-card-text>
-      <v-alert v-if="kidsError" type="error" dense class="mx-4 mb-3" closable @click:close="kidsError = ''">
-        {{ kidsError }}
-      </v-alert>
-    </v-card>
 
     <v-alert v-if="error" type="error" class="mb-4" closable @click:close="error = ''">
       {{ error }}
@@ -504,282 +659,290 @@ onBeforeUnmount(() => {
       {{ successMessage }}
     </v-alert>
 
-    <div class="d-flex mb-3">
-      <v-chip class="mr-2" color="green" variant="tonal">
-        Dentro: {{ totalInside }}
-      </v-chip>
-      <v-chip color="grey" variant="tonal">
-        Fuera: {{ totalOut }}
-      </v-chip>
-    </div>
-
-    <!-- Toolbar de búsqueda -->
-    <v-toolbar>
-      <v-text-field
-        flat
-        v-model="search"
-        prepend-inner-icon="mdi-magnify"
-        density="compact"
-        variant="solo"
-        hide-details
-        clearable
-        placeholder="Buscar por niño, acudiente o manilla..."
-      />
-      <v-select
-        v-if="!mobile"
-        v-model="statusFilter"
-        :items="[
-          { title: 'Todos', value: '' },
-          { title: 'Dentro', value: 'inside' },
-          { title: 'Fuera', value: 'out' },
-        ]"
-        item-title="title"
-        item-value="value"
-        label="Estado"
-        density="compact"
-        variant="outlined"
-        class="ml-2"
-        style="max-width: 160px;"
-      />
-    </v-toolbar>
-
-    <!-- Filtro por estado en móvil: chips táctiles -->
-    <div v-if="mobile" class="d-flex ga-1 mt-2 mb-1">
-      <v-chip
-        size="small"
-        :color="statusFilter === '' ? 'primary' : undefined"
-        :variant="statusFilter === '' ? 'tonal' : 'outlined'"
-        @click="statusFilter = ''"
-      >
-        Todos
-      </v-chip>
-      <v-chip
-        size="small"
-        :color="statusFilter === 'inside' ? 'green' : undefined"
-        :variant="statusFilter === 'inside' ? 'tonal' : 'outlined'"
-        @click="statusFilter = 'inside'"
-      >
-        Dentro
-      </v-chip>
-      <v-chip
-        size="small"
-        :color="statusFilter === 'out' ? 'grey' : undefined"
-        :variant="statusFilter === 'out' ? 'tonal' : 'outlined'"
-        @click="statusFilter = 'out'"
-      >
-        Fuera
-      </v-chip>
-    </div>
-
-    <!-- Pestañas de salones / rangos de edad -->
-    <v-tabs
-      v-if="eventAgeGroups.length > 0 || checkInGroups.length > 1"
-      v-model="activeTab"
-      color="primary"
-      class="mb-2"
-      show-arrows
-    >
-      <v-tab
-        v-for="(group, index) in checkInGroups"
-        :key="index"
-        :value="index"
-        :class="{ 'tab-no-matches': hasActiveSearch && group.items.length === 0 }"
-      >
-        <span>
-          {{ group.name }}
-          <span v-if="group.minAge !== null && group.maxAge !== null && !mobile" class="ml-1 text-caption text-medium-emphasis">
-            ({{ group.minAge }}-{{ group.maxAge }})
-          </span>
-        </span>
-        <template v-if="!mobile">
-          <v-chip
-            v-if="hasActiveSearch && group.items.length > 0"
-            size="x-small"
-            color="primary"
-            variant="flat"
-            class="ml-2"
-          >
-            {{ group.items.length }}
-          </v-chip>
-          <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
-            {{ group.inside }}
-          </v-chip>
-          <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
-            {{ group.out }}
-          </v-chip>
-        </template>
-      </v-tab>
-    </v-tabs>
-
-    <!-- Resumen del grupo activo en móvil -->
-    <div v-if="mobile && checkInGroups.length" class="d-flex ga-2 mb-2 text-caption text-medium-emphasis">
-      <span class="font-weight-medium">{{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.name }}</span>
-      <v-chip size="x-small" color="green" variant="tonal">
-        Dentro: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.inside ?? 0 }}
-      </v-chip>
-      <v-chip size="x-small" color="grey" variant="tonal">
-        Fuera: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.out ?? 0 }}
-      </v-chip>
-    </div>
-
-    <v-progress-circular
-      v-if="loading && !checkIns.length"
-      indeterminate
-      color="primary"
-      class="d-block mx-auto my-8"
-    />
-
-    <!-- ===== Cards de check-ins (móvil) ===== -->
-    <div v-if="mobile">
-      <v-card
-        v-for="item in activeGroupItems || []"
-        :key="item.id"
-        class="mb-2"
-        variant="outlined"
-      >
-        <v-card-item>
-          <div class="d-flex align-center">
-            <div class="flex-grow-1">
-              <div class="font-weight-bold text-subtitle-2">{{ item.personName }}</div>
-              <div class="text-caption text-medium-emphasis">
-                <template v-if="item.personBirthDate">
-                  {{ new Date(item.personBirthDate).toLocaleDateString() }}
-                </template>
-                <template v-if="item.age !== null">
-                  <template v-if="item.personBirthDate"> · </template>{{ item.age }} años
-                </template>
-              </div>
-            </div>
-            <v-chip
-              v-if="item.checkOutTime"
-              size="small"
-              color="grey"
-              variant="tonal"
-            >
-              {{ new Date(item.checkOutTime).toLocaleTimeString() }}
-            </v-chip>
-            <v-chip
-              v-else
-              size="small"
-              color="green"
-              variant="tonal"
-            >
-              Dentro
-            </v-chip>
-          </div>
-          <v-divider class="my-2" />
-          <div class="d-flex flex-wrap ga-2 align-center">
-            <v-chip
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-tag-text-outline"
-            >
-              {{ item.wristbandNumber || 'Sin manilla' }}
-            </v-chip>
-            <v-chip
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-account-outline"
-            >
-              {{ item.caregiverName || 'Sin acudiente' }}
-            </v-chip>
-            <v-chip
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-clock-in"
-            >
-              {{ new Date(item.checkInTime).toLocaleTimeString() }}
-            </v-chip>
-            <v-spacer />
-            <v-btn
-              v-if="!item.checkOutTime && can(PERMISSIONS.CHECKINS_UPDATE)"
-              size="small"
-              variant="tonal"
-              color="orange"
-              icon="mdi-clipboard-arrow-right"
-              title="Registrar salida"
-              @click="handleOpenCheckOut(item)"
-            />
-          </div>
-        </v-card-item>
-      </v-card>
-      <div v-if="!loading && !activeGroupItems.length" class="text-center py-6 text-medium-emphasis">
-        {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : 'No hay niños registrados en este evento.' }}
+    <!-- ===== Asistencia del evento activo (se oculta en el tab de Tarjetas) ===== -->
+    <template v-if="!isWelcomeTab">
+      <div v-if="activeEventTrackCheckOut" class="d-flex mb-3">
+        <v-chip class="mr-2" color="green" variant="tonal">
+          Dentro: {{ totalInside }}
+        </v-chip>
+        <v-chip color="grey" variant="tonal">
+          Fuera: {{ totalOut }}
+        </v-chip>
       </div>
-    </div>
+      <div v-else class="d-flex mb-3">
+        <v-chip color="primary" variant="tonal">
+          Asistentes: {{ checkIns.length || 0 }}
+        </v-chip>
+      </div>
 
-    <!-- ===== Tabla de check-ins (escritorio) ===== -->
-    <v-data-table-server
-      v-else
-      :headers="[
-        { title: 'Niño', key: 'childName', sortable: false },
-        { title: 'Edad', key: 'age', sortable: false },
-        { title: 'Manilla', key: 'wristbandNumber', sortable: false },
-        { title: 'Acudiente que entregó', key: 'caregiverName', sortable: false },
-        { title: 'Hora ingreso', key: 'checkInTime', sortable: false },
-        { title: 'Salida', key: 'checkOutTime', sortable: false },
-        { title: 'Acciones', key: 'actions', sortable: false },
-      ]"
-      :items="activeGroupItems || []"
-      item-key="id"
-      :loading="loading"
-      :items-length="activeGroupItems.length"
-      density="comfortable"
-      :hide-default-footer="true"
-    >
-      <template #item.childName="{ item }">
-        <div>{{ item.personName }}</div>
-        <div class="text-caption text-medium-emphasis">
-          {{ item.personBirthDate ? new Date(item.personBirthDate).toLocaleDateString() : '' }}
-        </div>
-      </template>
-      <template #item.age="{ item }">
-        {{ item.age !== null ? `${item.age} años` : '—' }}
-      </template>
-      <template #item.checkInTime="{ item }">
-        {{ new Date(item.checkInTime).toLocaleTimeString() }}
-      </template>
-      <template #item.checkOutTime="{ item }">
+      <!-- Toolbar de búsqueda -->
+      <v-toolbar>
+        <v-text-field
+          flat
+          v-model="search"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          variant="solo"
+          hide-details
+          clearable
+          :placeholder="activeEventIsKids
+            ? 'Buscar por niño, acudiente o manilla...'
+            : 'Buscar por persona o manilla...'"
+        />
+        <v-select
+          v-if="!mobile && activeEventTrackCheckOut"
+          v-model="statusFilter"
+          :items="[
+            { title: 'Todos', value: '' },
+            { title: 'Dentro', value: 'inside' },
+            { title: 'Fuera', value: 'out' },
+          ]"
+          item-title="title"
+          item-value="value"
+          label="Estado"
+          density="compact"
+          variant="outlined"
+          class="ml-2"
+          style="max-width: 160px;"
+        />
+      </v-toolbar>
+
+      <!-- Filtro por estado en móvil: chips táctiles -->
+      <div v-if="mobile && activeEventTrackCheckOut" class="d-flex ga-1 mt-2 mb-1">
         <v-chip
-          v-if="item.checkOutTime"
           size="small"
-          color="grey"
-          variant="tonal"
+          :color="statusFilter === '' ? 'primary' : undefined"
+          :variant="statusFilter === '' ? 'tonal' : 'outlined'"
+          @click="statusFilter = ''"
         >
-          {{ new Date(item.checkOutTime).toLocaleTimeString() }}
+          Todos
         </v-chip>
         <v-chip
-          v-else
           size="small"
-          color="green"
-          variant="tonal"
+          :color="statusFilter === 'inside' ? 'green' : undefined"
+          :variant="statusFilter === 'inside' ? 'tonal' : 'outlined'"
+          @click="statusFilter = 'inside'"
         >
           Dentro
         </v-chip>
-      </template>
-      <template #item.actions="{ item }">
-        <v-btn
-          v-if="!item.checkOutTime && can(PERMISSIONS.CHECKINS_UPDATE)"
+        <v-chip
           size="small"
-          variant="text"
-          color="orange"
-          icon="mdi-clipboard-arrow-right"
-          title="Registrar salida"
-          @click="handleOpenCheckOut(item)"
-        />
-      </template>
-      <template #no-data>
-        <div class="text-center py-6">
-          {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : 'No hay niños registrados en este evento.' }}
-        </div>
-      </template>
-      <template #loading>
-        Cargando registros...
-      </template>
-    </v-data-table-server>
+          :color="statusFilter === 'out' ? 'grey' : undefined"
+          :variant="statusFilter === 'out' ? 'tonal' : 'outlined'"
+          @click="statusFilter = 'out'"
+        >
+          Fuera
+        </v-chip>
+      </div>
 
-    <!-- Tarjetas de Conexión de este evento -->
-    <v-card v-if="can(PERMISSIONS.WELCOME_CARDS_READ)" class="mt-4" variant="outlined">
+      <!-- Pestañas de salones / rangos de edad -->
+      <v-tabs
+        v-if="activeEventAgeGroups.length > 0 || checkInGroups.length > 1"
+        v-model="activeTab"
+        color="primary"
+        class="mb-2"
+        show-arrows
+      >
+        <v-tab
+          v-for="(group, index) in checkInGroups"
+          :key="index"
+          :value="index"
+          :class="{ 'tab-no-matches': hasActiveSearch && group.items.length === 0 }"
+        >
+          <span>
+            {{ group.name }}
+            <span v-if="group.minAge !== null && group.maxAge !== null && !mobile" class="ml-1 text-caption text-medium-emphasis">
+              ({{ group.minAge }}-{{ group.maxAge }})
+            </span>
+          </span>
+          <template v-if="!mobile">
+            <v-chip
+              v-if="hasActiveSearch && group.items.length > 0"
+              size="x-small"
+              color="primary"
+              variant="flat"
+              class="ml-2"
+            >
+              {{ group.items.length }}
+            </v-chip>
+            <v-chip size="x-small" class="ml-2" color="green" variant="tonal">
+              {{ group.inside }}
+            </v-chip>
+            <v-chip size="x-small" class="ml-1" color="grey" variant="tonal">
+              {{ group.out }}
+            </v-chip>
+          </template>
+        </v-tab>
+      </v-tabs>
+
+      <!-- Resumen del grupo activo en móvil -->
+      <div v-if="mobile && checkInGroups.length" class="d-flex ga-2 mb-2 text-caption text-medium-emphasis">
+        <span class="font-weight-medium">{{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.name }}</span>
+        <v-chip size="x-small" color="green" variant="tonal">
+          Dentro: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.inside ?? 0 }}
+        </v-chip>
+        <v-chip size="x-small" color="grey" variant="tonal">
+          Fuera: {{ checkInGroups[Math.min(activeTab ?? 0, checkInGroups.length - 1)]?.out ?? 0 }}
+        </v-chip>
+      </div>
+
+      <v-progress-circular
+        v-if="loading && !checkIns.length"
+        indeterminate
+        color="primary"
+        class="d-block mx-auto my-8"
+      />
+
+      <!-- ===== Cards de check-ins (móvil) ===== -->
+      <div v-if="mobile">
+        <v-card
+          v-for="item in activeGroupItems || []"
+          :key="item.id"
+          class="mb-2"
+          variant="outlined"
+        >
+          <v-card-item>
+            <div class="d-flex align-center">
+              <div class="flex-grow-1">
+                <div class="font-weight-bold text-subtitle-2">{{ item.personName }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  <template v-if="item.personBirthDate">
+                    {{ new Date(item.personBirthDate).toLocaleDateString() }}
+                  </template>
+                  <template v-if="item.age !== null">
+                    <template v-if="item.personBirthDate"> · </template>{{ item.age }} años
+                  </template>
+                </div>
+              </div>
+              <v-chip
+                v-if="activeEventTrackCheckOut && item.checkOutTime"
+                size="small"
+                color="grey"
+                variant="tonal"
+              >
+                {{ new Date(item.checkOutTime).toLocaleTimeString() }}
+              </v-chip>
+              <v-chip
+                v-else-if="activeEventTrackCheckOut"
+                size="small"
+                color="green"
+                variant="tonal"
+              >
+                Dentro
+              </v-chip>
+            </div>
+            <v-divider class="my-2" />
+            <div class="d-flex flex-wrap ga-2 align-center">
+              <v-chip
+                v-if="activeEventRequireWristband"
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-tag-text-outline"
+              >
+                {{ item.wristbandNumber || 'Sin manilla' }}
+              </v-chip>
+              <v-chip
+                v-if="activeEventIsKids"
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-account-outline"
+              >
+                {{ item.caregiverName || 'Sin acudiente' }}
+              </v-chip>
+              <v-chip
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-clock-in"
+              >
+                {{ new Date(item.checkInTime).toLocaleTimeString() }}
+              </v-chip>
+              <v-spacer />
+              <v-btn
+                v-if="activeEventTrackCheckOut && !item.checkOutTime && can(PERMISSIONS.CHECKINS_UPDATE)"
+                size="small"
+                variant="tonal"
+                color="orange"
+                icon="mdi-clipboard-arrow-right"
+                title="Registrar salida"
+                @click="handleOpenCheckOut(item)"
+              />
+            </div>
+          </v-card-item>
+        </v-card>
+        <div v-if="!loading && !activeGroupItems.length" class="text-center py-6 text-medium-emphasis">
+          {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : (activeEventIsKids ? 'No hay niños registrados en este evento.' : 'No hay asistentes registrados en este evento.') }}
+        </div>
+      </div>
+
+      <!-- ===== Tabla de check-ins (escritorio) ===== -->
+      <v-data-table-server
+        v-else
+        :headers="checkInHeaders"
+        :items="activeGroupItems || []"
+        item-key="id"
+        :loading="loading"
+        :items-length="activeGroupItems.length"
+        density="comfortable"
+        :hide-default-footer="true"
+      >
+        <template #item.childName="{ item }">
+          <div>{{ item.personName }}</div>
+          <div class="text-caption text-medium-emphasis">
+            {{ item.personBirthDate ? new Date(item.personBirthDate).toLocaleDateString() : '' }}
+          </div>
+        </template>
+        <template #item.age="{ item }">
+          {{ item.age !== null ? `${item.age} años` : '—' }}
+        </template>
+        <template #item.checkInTime="{ item }">
+          {{ new Date(item.checkInTime).toLocaleTimeString() }}
+        </template>
+        <template v-if="activeEventTrackCheckOut" #item.checkOutTime="{ item }">
+          <v-chip
+            v-if="item.checkOutTime"
+            size="small"
+            color="grey"
+            variant="tonal"
+          >
+            {{ new Date(item.checkOutTime).toLocaleTimeString() }}
+          </v-chip>
+          <v-chip
+            v-else
+            size="small"
+            color="green"
+            variant="tonal"
+          >
+            Dentro
+          </v-chip>
+        </template>
+        <template v-if="activeEventTrackCheckOut" #item.actions="{ item }">
+          <v-btn
+            v-if="!item.checkOutTime && can(PERMISSIONS.CHECKINS_UPDATE)"
+            size="small"
+            variant="text"
+            color="orange"
+            icon="mdi-clipboard-arrow-right"
+            title="Registrar salida"
+            @click="handleOpenCheckOut(item)"
+          />
+        </template>
+        <template #no-data>
+          <div class="text-center py-6">
+            {{ hasActiveSearch ? 'Sin resultados para la búsqueda.' : (activeEventIsKids ? 'No hay niños registrados en este evento.' : 'No hay asistentes registrados en este evento.') }}
+          </div>
+        </template>
+        <template #loading>
+          Cargando registros...
+        </template>
+      </v-data-table-server>
+    </template>
+
+    <!-- ===== Tarjetas de Conexión del evento principal (tab único) ===== -->
+    <v-card
+      v-if="isWelcomeTab && can(PERMISSIONS.WELCOME_CARDS_READ)"
+      variant="outlined"
+      class="mt-4"
+    >
       <v-card-title class="text-subtitle-1 font-weight-bold">
         Tarjetas de Conexión ({{ welcomeCards.length }})
       </v-card-title>
@@ -912,8 +1075,20 @@ onBeforeUnmount(() => {
       </v-card-text>
     </v-card>
 
-    <CheckinsCheckInForm ref="checkInFormRef" :event-id="eventId" @saved="handleCheckInSaved" />
-    <CheckinsCheckOutForm ref="checkOutFormRef" @saved="handleCheckOutSaved" />
+    <CheckinsCheckInForm
+      ref="checkInFormRef"
+      :event-id="activeEventId"
+      :is-kids-event="activeEventIsKids"
+      :require-wristband="activeEventRequireWristband"
+      :ministry-name="activeEventMinistryName"
+      @saved="handleCheckInSaved"
+    />
+    <CheckinsCheckOutForm
+      ref="checkOutFormRef"
+      :is-kids-event="activeEventIsKids"
+      :require-wristband="activeEventRequireWristband"
+      @saved="handleCheckOutSaved"
+    />
 
     <!-- Confirmación de activación con ministerios vinculados -->
     <v-dialog v-model="confirmDialog" max-width="500">
@@ -975,5 +1150,10 @@ onBeforeUnmount(() => {
 /* Atenuar los tabs sin coincidencias mientras hay una búsqueda activa */
 .tab-no-matches {
   opacity: 0.4;
+}
+
+/* Evitar que los tabs de evento se compriman demasiado en escritorio */
+.min-w-tab {
+  min-width: 140px;
 }
 </style>
