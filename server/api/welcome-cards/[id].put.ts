@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { WelcomeCard } from '~~/server/models/WelcomeCard'
+import { Person } from '~~/server/models/Person'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
 import { CHURCH_CAMPUSES, AFFINITY_GROUPS, FOLLOW_UP_INTERESTS, REGISTRATION_ORIGINS } from '~~/shared/welcomeCard'
@@ -10,6 +11,13 @@ const affinityValues = AFFINITY_GROUPS.map(g => g.value)
 const interestValues = FOLLOW_UP_INTERESTS.map(i => i.value)
 
 const updateWelcomeCardSchema = z.object({
+  // Persona vinculada (re-vincular a existente, desvincular con null, o crear nueva con newPerson)
+  personId: z.string().nullable().optional(),
+  newPerson: z.object({
+    name: z.string().trim().min(1, 'El nombre es requerido'),
+    email: z.string().email().optional().or(z.literal('')),
+    phone: z.string().optional(),
+  }).optional(),
   eventId: z.string().nullable().optional(),
   registrationDate: z.string().nullable().optional(),
   visitorType: z.enum(['first_time', 'update_info']).nullable().optional(),
@@ -38,7 +46,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'ID de tarjeta requerido' })
   }
 
-  const body = await readBody(event)
+  const rawBody = await readBody(event)
+  // Normalizar: convertir cadenas vacías a undefined antes de validar zod.
+  // El GET devuelve '' para campos enum vacíos; zod los rechazaría.
+  const body = rawBody && typeof rawBody === 'object'
+    ? Object.fromEntries(Object.entries(rawBody).map(([k, v]) => [k, v === '' ? undefined : v]))
+    : rawBody
   const result = updateWelcomeCardSchema.safeParse(body)
 
   if (!result.success) {
@@ -50,6 +63,33 @@ export default defineEventHandler(async (event) => {
   }
 
   const updateData: Record<string, any> = { ...result.data }
+
+  // Resolver la persona vinculada: re-vincular existente, crear nueva o desvincular
+  if ('personId' in updateData || 'newPerson' in updateData) {
+    if (updateData.newPerson) {
+      // Crear persona nueva y vincularla
+      const { name, email, phone } = updateData.newPerson
+      const newPersonDoc = await Person.create({
+        name,
+        email: email || undefined,
+        phone: phone || undefined,
+        membershipDate: updateData.registrationDate ? parseDateOnly(updateData.registrationDate) : new Date(),
+      })
+      updateData.person = newPersonDoc._id
+    } else if (updateData.personId) {
+      // Validar que la persona exista
+      const existingPerson = await Person.findById(updateData.personId)
+      if (!existingPerson) {
+        throw createError({ statusCode: 400, statusMessage: 'La persona seleccionada no existe' })
+      }
+      updateData.person = existingPerson._id
+    } else {
+      // Desvincular tarjeta (la persona NO se elimina)
+      updateData.person = null
+    }
+    delete updateData.personId
+    delete updateData.newPerson
+  }
   if ('eventId' in updateData) {
     const eventId = updateData.eventId
     delete updateData.eventId

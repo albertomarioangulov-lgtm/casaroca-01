@@ -5,7 +5,9 @@ definePageMeta({
 
 const route = useRoute()
 const cardId = route.params.id as string
-const isEditing = route.query.edit === '1'
+// Reactivo al query: cambiar ?edit=1 en la misma ruta reutiliza el componente,
+// por lo que debe ser un computed para actualizar la vista sin recargar.
+const isEditing = computed(() => route.query.edit === '1')
 
 const { can, PERMISSIONS } = usePermissions()
 
@@ -58,14 +60,95 @@ const affinityLabel = (value: string | undefined) => {
   return value ? (map[value] || value) : '—'
 }
 
+// ==== Re-vinculación de persona en edición ====
+// Modos: keep (mantener actual), existing (vincular persona existente),
+//        new (crear y vincular persona nueva), unlink (desvincular)
+const personLinkMode = ref<'keep' | 'existing' | 'new' | 'unlink'>('keep')
+const selectedPersonId = ref('')
+const newPersonName = ref('')
+const newPersonEmail = ref('')
+const newPersonPhone = ref('')
+
+// Búsqueda de personas para el autocomplete
+const personSearch = ref('')
+const searchResults = ref<Array<Record<string, any>>>([])
+const searchLoading = ref(false)
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+const searchPersons = async (query: string) => {
+  if (!query || query.trim().length < 3) {
+    searchResults.value = []
+    return
+  }
+  searchLoading.value = true
+  try {
+    const data = await $fetch('/api/persons', {
+      query: { search: query, limit: 8 },
+    }) as any
+    searchResults.value = data?.items ?? []
+  } catch {
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+const onPersonSearch = (query: string) => {
+  personSearch.value = query
+  if (searchTimeout) clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => searchPersons(query), 400)
+}
+
 const saveEdits = async () => {
   if (!card.value) return
   saving.value = true
   saveError.value = ''
   try {
+    // Construir payload limpio (quitar campos derivados que el backend no acepta)
+    const payload: Record<string, any> = { ...card.value }
+    delete payload.id
+    delete payload.personName
+    delete payload.personBirthDate
+    delete payload.eventName
+    delete payload.eventDate
+    delete payload.personSnapshot
+    delete payload.createdAt
+    delete payload.updatedAt
+
+    // Sanitizar: el schema zod del PUT rechaza '' (cadena vacía) en campos enum
+    for (const field of ['visitorType', 'acceptedJesus', 'connectionInterest', 'wantsOtherCampus', 'campus', 'affinityGroup', 'registrationOrigin', 'acceptsDataPolicy']) {
+      if (payload[field] === '' || payload[field] === null) payload[field] = undefined
+    }
+    // Textos vacíos → undefined
+    for (const field of ['email', 'phone', 'motivationOther', 'spouseName', 'prayerRequest']) {
+      if (payload[field] === '' || payload[field] === null) payload[field] = undefined
+    }
+    if (payload.eventId === '' || payload.eventId === null) delete payload.eventId
+    if (!payload.registrationDate) delete payload.registrationDate
+
+    // Resolver la vinculación de persona según el modo elegido
+    if (personLinkMode.value === 'existing' && selectedPersonId.value) {
+      payload.personId = selectedPersonId.value
+      delete payload.newPerson
+    } else if (personLinkMode.value === 'new' && newPersonName.value.trim()) {
+      payload.newPerson = {
+        name: newPersonName.value.trim(),
+        email: newPersonEmail.value || undefined,
+        phone: newPersonPhone.value || undefined,
+      }
+      delete payload.personId
+    } else if (personLinkMode.value === 'unlink') {
+      payload.personId = null
+      delete payload.newPerson
+    } else {
+      // keep: no tocar la vinculación actual
+      delete payload.personId
+      delete payload.newPerson
+    }
+
     await $fetch(`/api/welcome-cards/${cardId}`, {
       method: 'PUT',
-      body: card.value,
+      body: payload,
     })
     navigateTo(`/welcome/${cardId}`)
   } catch (err: any) {
@@ -77,12 +160,23 @@ const saveEdits = async () => {
 
 // Botón principal (editar/salir de edición)
 const mainAction = () => {
-  if (isEditing) {
+  if (isEditing.value) {
     navigateTo(`/welcome/${cardId}`)
   } else {
     navigateTo(`/welcome/${cardId}?edit=1`)
   }
 }
+
+// Volver contextual: si la tarjeta pertenece a un evento, regresar al tab de Tarjetas de ese evento
+const backTo = computed(() => {
+  if (card.value?.eventId) {
+    return {
+      to: `/events/${card.value.eventId}?tab=welcome`,
+      label: 'Volver al evento',
+    }
+  }
+  return { to: '/welcome', label: 'Volver a tarjetas' }
+})
 </script>
 
 <template>
@@ -92,9 +186,9 @@ const mainAction = () => {
       color="primary"
       prepend-icon="mdi-arrow-left"
       class="mb-2"
-      @click="navigateTo('/welcome')"
+      @click="navigateTo(backTo.to)"
     >
-      Volver a tarjetas
+      {{ backTo.label }}
     </v-btn>
 
     <v-alert v-if="notFound" type="warning" title="Tarjeta no encontrada" text="La tarjeta de conexión no existe o fue eliminada." />
@@ -179,6 +273,26 @@ const mainAction = () => {
               </v-col>
               <v-col v-if="card.eventName" cols="12" md="6">
                 <strong>Evento:</strong> {{ card.eventName }}
+              </v-col>
+              <v-col cols="12" md="6">
+                <strong>Persona vinculada:</strong>
+                <template v-if="card.personId">
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    class="pa-0"
+                    prepend-icon="mdi-account-check-outline"
+                    @click="navigateTo(`/persons/${card.personId}`)"
+                  >
+                    {{ card.personName || 'Ver persona' }}
+                  </v-btn>
+                </template>
+                <template v-else>
+                  <v-chip size="small" color="warning" variant="tonal">
+                    Sin persona vinculada
+                  </v-chip>
+                </template>
               </v-col>
             </v-row>
           </v-card-text>
@@ -320,6 +434,69 @@ const mainAction = () => {
                 />
               </v-col>
             </v-row>
+
+            <!-- Persona vinculada: corregir si la tarjeta quedó mal asociada -->
+            <v-divider class="my-4" />
+            <p class="text-subtitle-1 font-weight-bold mb-2">
+              Persona vinculada
+            </p>
+            <v-alert
+              v-if="card.personId"
+              type="info"
+              variant="tonal"
+              class="mb-3"
+              :title="card.personName || 'Persona vinculada'"
+              text="Si la tarjeta quedó vinculada a la persona equivocada, puedes cambiarla o desvincularla."
+            />
+            <v-select
+              v-model="personLinkMode"
+              label="Acción con la persona"
+              :items="[
+                { title: card.personId ? 'Mantener la persona actual' : 'Dejar sin persona vinculada', value: 'keep' },
+                { title: 'Vincular a una persona existente', value: 'existing' },
+                { title: 'Crear y vincular persona nueva', value: 'new' },
+                { title: 'Desvincular persona', value: 'unlink' },
+              ]"
+              item-title="title"
+              item-value="value"
+              dense
+              class="mb-3"
+            />
+            <template v-if="personLinkMode === 'existing'">
+              <v-autocomplete
+                v-model="selectedPersonId"
+                label="Buscar persona existente (nombre, teléfono o email)"
+                :items="searchResults"
+                item-title="name"
+                item-value="id"
+                :loading="searchLoading"
+                @update:search="onPersonSearch"
+              />
+            </template>
+            <template v-else-if="personLinkMode === 'new'">
+              <v-text-field
+                v-model="newPersonName"
+                label="Nombre completo de la persona nueva"
+                placeholder="Nombres y Apellidos"
+                required
+              />
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-text-field v-model="newPersonEmail" label="Correo (opcional)" type="email" />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field v-model="newPersonPhone" label="Teléfono (opcional)" />
+                </v-col>
+              </v-row>
+            </template>
+            <v-alert
+              v-else-if="personLinkMode === 'unlink'"
+              type="warning"
+              variant="tonal"
+              class="mb-2"
+              text="La persona NO se eliminará del sistema; solo se quitará la vinculación de esta tarjeta."
+            />
+
             <div class="d-flex justify-end mt-4">
               <v-btn variant="text" class="mr-2" @click="navigateTo(`/welcome/${cardId}`)">Cancelar</v-btn>
               <v-btn color="primary" prepend-icon="mdi-content-save-outline" :loading="saving" @click="saveEdits">
