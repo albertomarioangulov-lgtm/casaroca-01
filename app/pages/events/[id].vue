@@ -188,6 +188,7 @@ const fetchEvent = async () => {
     mainTabInside.value = result.totalInside ?? 0
     mainTabOut.value = result.totalOut ?? 0
     kidsError.value = ''
+    applyWelcomeTabIfRequested()
   } catch {
     eventName.value = ''
     childEvents.value = []
@@ -233,6 +234,19 @@ const goToMainEventTab = () => {
   }
   activeEventTab.value = 0
   handleActiveEventTabChange()
+}
+
+// Si venimos del formulario de tarjeta de conexión (?tab=welcome),
+// activa el tab de Tarjetas de Conexión del evento una vez los childEvents estén cargados.
+const pendingWelcomeTab = ref(false)
+const applyWelcomeTabIfRequested = () => {
+  if (pendingWelcomeTab.value && childEvents.value.length >= 0) {
+    pendingWelcomeTab.value = false
+    activeEventTab.value = welcomeTabIndex.value
+    handleActiveEventTabChange()
+    // Limpiar el query para que no se re-aplique al cambiar de tab manualmente
+    navigateTo(`/events/${eventId}`, { replace: true })
+  }
 }
 
 // Pestaña activa del selector de salones
@@ -433,6 +447,7 @@ watch(statusFilter, () => {
 
 onMounted(() => {
   if (can(PERMISSIONS.CHECKINS_READ)) {
+    pendingWelcomeTab.value = route.query.tab === 'welcome'
     fetchEventStatus()
     fetchEvent()
     fetchCheckIns(activeEventId.value)

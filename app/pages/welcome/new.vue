@@ -45,6 +45,8 @@ const {
   resetPersonSelection,
 } = useWelcomeCardForm()
 
+const savedMessage = ref('')
+
 // Condicionales de la sección de interés
 const showFollowUp = computed(() => form.value.connectionInterest === 'casa_roca_home')
 const showOtherCampus = computed(() => form.value.wantsOtherCampus === 'yes')
@@ -91,13 +93,31 @@ const handleNext = () => {
 const finish = async () => {
   const success = await saveCard(eventIdFromRoute || undefined)
   if (success) {
-    navigateTo('/welcome')
+    if (eventIdFromRoute) {
+      navigateTo(`/events/${eventIdFromRoute}?tab=welcome`)
+    } else {
+      navigateTo('/welcome')
+    }
+  }
+}
+
+// Guarda la tarjeta actual y deja el formulario listo para registrar otra del mismo evento
+const saveAndAddAnother = async () => {
+  savedMessage.value = ''
+  submitError.value = ''
+  const success = await saveCard(eventIdFromRoute || undefined)
+  if (success) {
+    resetForm()
+    fieldErrors.value = {}
+    savedMessage.value = eventIdFromRoute
+      ? 'Tarjeta guardada. Ya puedes registrar otra persona de este evento.'
+      : 'Tarjeta guardada. Ya puedes registrar otra.'
   }
 }
 
 const cancel = () => {
   if (eventIdFromRoute) {
-    navigateTo(`/events/${eventIdFromRoute}`)
+    navigateTo(`/events/${eventIdFromRoute}?tab=welcome`)
   } else {
     navigateTo('/welcome')
   }
@@ -131,6 +151,9 @@ const cancel = () => {
 
     <v-alert v-if="submitError" type="error" class="mb-4" closable @click:close="submitError = ''">
       {{ submitError }}
+    </v-alert>
+    <v-alert v-if="savedMessage" type="success" class="mb-4" closable @click:close="savedMessage = ''">
+      {{ savedMessage }}
     </v-alert>
 
     <v-stepper v-model="step">
@@ -458,7 +481,16 @@ const cancel = () => {
                 Debes aceptar el tratamiento de datos para guardar.
               </v-alert>
 
-              <div class="d-flex justify-end mt-4">
+              <div class="d-flex justify-end flex-wrap ga-2 mt-4">
+                <v-btn
+                  variant="tonal"
+                  color="primary"
+                  :loading="saving"
+                  prepend-icon="mdi-plus"
+                  @click="saveAndAddAnother"
+                >
+                  Guardar y registrar otra
+                </v-btn>
                 <v-btn
                   color="primary"
                   :loading="saving"
