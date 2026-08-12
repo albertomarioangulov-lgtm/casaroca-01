@@ -31,7 +31,11 @@ export default defineEventHandler(async (event) => {
   }
   if (ministryId) filter.ministry = ministryId
   if (type) filter.type = type
-  if (status) filter.status = status
+  if (status) {
+    const statuses = status.split(',').filter(Boolean)
+    if (statuses.length > 1) filter.status = { $in: statuses }
+    else if (statuses.length === 1) filter.status = statuses[0]
+  }
 
   const total = await Event.countDocuments(filter)
   const events = await Event.find(filter)

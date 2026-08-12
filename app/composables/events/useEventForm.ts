@@ -13,6 +13,7 @@ export const eventFormSchema = z.object({
   welcomeEnabled: z.boolean().optional(),
   requireWristband: z.boolean().optional(),
   trackCheckOut: z.boolean().optional(),
+  type: z.enum(['regular', 'welcome', 'baptism', 'outreach']).optional(),
 })
 
 export type EventFormData = z.infer<typeof eventFormSchema>
@@ -65,6 +66,7 @@ export const useEventForm = () => {
       welcomeEnabled?: boolean
       requireWristband?: boolean
       trackCheckOut?: boolean
+      type?: string
     },
     eventId?: string
   ): Promise<{ success: boolean; warning?: string }> => {

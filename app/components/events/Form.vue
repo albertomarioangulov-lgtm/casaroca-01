@@ -50,7 +50,15 @@ const form = reactive({
   welcomeEnabled: true,
   requireWristband: false,
   trackCheckOut: false,
+  type: 'regular' as string,
 })
+
+const typeOptions = [
+  { title: 'Regular', value: 'regular' },
+  { title: 'Conexión / Bienvenida', value: 'welcome' },
+  { title: 'Bautismo', value: 'baptism' },
+  { title: 'Visita', value: 'outreach' },
+]
 
 // Ministerios para el selector
 const { data: ministries } = await useFetch('/api/ministries', {
@@ -105,6 +113,7 @@ watch(selectedEvent, (newEvent) => {
     form.welcomeEnabled = newEvent.welcomeEnabled ?? true
     form.requireWristband = newEvent.requireWristband ?? false
     form.trackCheckOut = newEvent.trackCheckOut ?? false
+    form.type = newEvent.type || 'regular'
     // includeRokaKids solo aplica al crear (no se restaura al editar)
   } else {
     form.name = ''
@@ -118,6 +127,7 @@ watch(selectedEvent, (newEvent) => {
     form.welcomeEnabled = true
     form.requireWristband = false
     form.trackCheckOut = false
+    form.type = 'regular'
   }
 }, { immediate: true })
 
@@ -139,6 +149,7 @@ watch(isFormOpen, async (isOpen) => {
       form.welcomeEnabled = true
       form.requireWristband = false
       form.trackCheckOut = false
+      form.type = 'regular'
     }
   }
 })
@@ -162,6 +173,7 @@ const submit = async () => {
       welcomeEnabled: form.welcomeEnabled,
       requireWristband: form.requireWristband,
       trackCheckOut: form.trackCheckOut,
+      type: form.type,
     },
     selectedEvent.value?.id
   )
@@ -274,6 +286,19 @@ const submit = async () => {
                 color="primary"
                 label="Registrar salida (dentro/fuera)"
                 hint="Muestra el botón de salida y los contadores de dentro/fuera. Los eventos de niños (RocaKids) siempre lo registran."
+                persistent-hint
+              />
+            </v-col>
+
+            <v-col cols="12" md="12">
+              <v-select
+                v-model="form.type"
+                label="Tipo de evento"
+                :items="typeOptions"
+                item-title="title"
+                item-value="value"
+                outlined
+                hint="Los eventos de Conexión aparecen como opción al registrar contactos en el seguimiento."
                 persistent-hint
               />
             </v-col>
