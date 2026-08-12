@@ -36,6 +36,14 @@ const updateWelcomeCardSchema = z.object({
   registrationOrigin: z.string().nullable().optional(),
   prayerRequest: z.string().nullable().optional(),
   acceptsDataPolicy: z.enum(['yes', 'no']).nullable().optional(),
+  // Campos de seguimiento: se reciben desde el GET pero no deben romper la edición
+  followUpStatus: z.enum(['not_started', 'active', 'no_interested', 'stopped']).nullable().optional(),
+  followUpStoppedAt: z.string().nullable().optional(),
+  followUpStoppedReason: z.string().nullable().optional(),
+  connectionEventId: z.string().nullable().optional(),
+  connectionEventName: z.string().nullable().optional(),
+  connectionEventDate: z.string().nullable().optional(),
+  connectionEventInvitedAt: z.string().nullable().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -94,6 +102,11 @@ export default defineEventHandler(async (event) => {
     const eventId = updateData.eventId
     delete updateData.eventId
     updateData.event = eventId || undefined
+  }
+  // Los campos de seguimiento se ignoran en la edición normal de la tarjeta
+  // (se gestionan mediante los endpoints de follow-up)
+  for (const field of ['followUpStatus', 'followUpStoppedAt', 'followUpStoppedReason', 'connectionEventId', 'connectionEventName', 'connectionEventDate', 'connectionEventInvitedAt']) {
+    delete updateData[field]
   }
   if ('registrationDate' in updateData) {
     if (updateData.registrationDate) {

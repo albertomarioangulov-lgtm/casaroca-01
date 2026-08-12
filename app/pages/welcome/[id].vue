@@ -114,6 +114,14 @@ const saveEdits = async () => {
     delete payload.personSnapshot
     delete payload.createdAt
     delete payload.updatedAt
+    // Los campos de seguimiento se gestionan mediante sus propios endpoints
+    delete payload.followUpStatus
+    delete payload.followUpStoppedAt
+    delete payload.followUpStoppedReason
+    delete payload.connectionEventId
+    delete payload.connectionEventName
+    delete payload.connectionEventDate
+    delete payload.connectionEventInvitedAt
 
     // Sanitizar: el schema zod del PUT rechaza '' (cadena vacía) en campos enum
     for (const field of ['visitorType', 'acceptedJesus', 'connectionInterest', 'wantsOtherCampus', 'campus', 'affinityGroup', 'registrationOrigin', 'acceptsDataPolicy']) {
@@ -260,6 +268,14 @@ const backTo = computed(() => {
             </v-row>
           </v-card-text>
         </v-card>
+
+        <!-- Panel de Seguimiento -->
+        <WelcomeFollowUpPanel
+          v-if="can(PERMISSIONS.WELCOME_CARDS_READ)"
+          :card-id="cardId"
+          :card="card"
+          class="mb-4"
+        />
 
         <v-card class="mb-4">
           <v-card-title>Datos internos</v-card-title>

@@ -15,6 +15,7 @@ export default defineEventHandler(async (event) => {
   const visitorType = (query.visitorType as string) || ''
   const eventId = (query.eventId as string) || ''
   const campus = (query.campus as string) || ''
+  const followUpStatus = (query.followUpStatus as string) || ''
 
   const filter: Record<string, any> = {}
   if (search) {
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
   if (visitorType) filter.visitorType = visitorType
   if (eventId) filter.event = eventId
   if (campus) filter.campus = campus
+  if (followUpStatus) filter.followUpStatus = followUpStatus
 
   const total = await WelcomeCard.countDocuments(filter)
   const cards = await WelcomeCard.find(filter)
@@ -59,6 +61,12 @@ export default defineEventHandler(async (event) => {
       registrationOrigin: c.registrationOrigin ?? '',
       prayerRequest: c.prayerRequest ?? '',
       acceptsDataPolicy: c.acceptsDataPolicy ?? '',
+      followUpStatus: c.followUpStatus ?? 'not_started',
+      followUpStoppedAt: c.followUpStoppedAt ?? null,
+      followUpStoppedReason: c.followUpStoppedReason ?? '',
+      connectionEventId: c.connectionEvent?._id?.toString?.() ?? c.connectionEvent?.toString?.() ?? '',
+      connectionEventName: c.connectionEvent?.name ?? '',
+      connectionEventDate: c.connectionEvent?.date ?? null,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     })),

@@ -11,6 +11,7 @@ const {
   error,
   search,
   visitorType,
+  followUpStatus,
   total,
   page,
   itemsPerPage,
@@ -27,6 +28,37 @@ const deleteConfirm = ref<string | null>(null)
 const formatDate = (date: string | null | undefined) => {
   if (!date) return '—'
   return new Date(date).toLocaleDateString()
+}
+
+// Mapeos de seguimiento para el listado
+const followUpLabel = (status: string) => {
+  const map: Record<string, string> = {
+    not_started: 'Sin iniciar',
+    active: 'En proceso',
+    no_interested: 'No interesado',
+    stopped: 'Detenido',
+  }
+  return map[status] || status
+}
+
+const followUpColor = (status: string) => {
+  const map: Record<string, string> = {
+    not_started: 'orange',
+    active: 'green',
+    no_interested: 'grey',
+    stopped: 'red',
+  }
+  return map[status] || 'grey'
+}
+
+const followUpIcon = (status: string) => {
+  const map: Record<string, string> = {
+    not_started: 'mdi-clock-outline',
+    active: 'mdi-check-circle-outline',
+    no_interested: 'mdi-cancel',
+    stopped: 'mdi-stop-circle-outline',
+  }
+  return map[status] || 'mdi-help-circle-outline'
 }
 
 const viewCard = (card: Record<string, any>) => {
@@ -103,7 +135,24 @@ onMounted(() => {
         density="compact"
         variant="outlined"
         class="ml-2"
-        style="max-width: 180px;"
+        style="max-width: 160px;"
+      />
+      <v-select
+        v-model="followUpStatus"
+        :items="[
+          { title: 'Todos', value: '' },
+          { title: 'Sin iniciar', value: 'not_started' },
+          { title: 'En proceso', value: 'active' },
+          { title: 'No interesado', value: 'no_interested' },
+          { title: 'Detenido', value: 'stopped' },
+        ]"
+        item-title="title"
+        item-value="value"
+        label="Seguimiento"
+        density="compact"
+        variant="outlined"
+        class="ml-2"
+        style="max-width: 160px;"
       />
     </v-toolbar>
 
@@ -114,6 +163,7 @@ onMounted(() => {
         { title: 'Teléfono', key: 'phone', sortable: false },
         { title: 'Email', key: 'email', sortable: false },
         { title: 'Tipo', key: 'visitorType', sortable: true },
+        { title: 'Seguimiento', key: 'followUpStatus', sortable: true },
         { title: 'Sede', key: 'campus', sortable: false },
         { title: 'Evento', key: 'eventName', sortable: false },
         { title: 'Acciones', key: 'actions', sortable: false },
@@ -145,6 +195,17 @@ onMounted(() => {
       </template>
       <template #item.eventName="{ item }">
         {{ item.eventName || '—' }}
+      </template>
+      <template #item.followUpStatus="{ item }">
+        <v-chip
+          size="small"
+          :color="followUpColor(item.followUpStatus)"
+          variant="tonal"
+          :prepend-icon="followUpIcon(item.followUpStatus)"
+          @click="viewCard(item)"
+        >
+          {{ followUpLabel(item.followUpStatus) }}
+        </v-chip>
       </template>
       <template #item.actions="{ item }">
         <v-btn

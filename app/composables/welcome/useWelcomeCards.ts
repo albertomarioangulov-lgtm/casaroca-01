@@ -14,6 +14,7 @@ export const useWelcomeCards = () => {
   const sortBy = ref('createdAt')
   const sortOrder = ref<'asc' | 'desc'>('desc')
   const visitorType = ref('')
+  const followUpStatus = ref('')
 
   let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -29,6 +30,7 @@ export const useWelcomeCards = () => {
           sortBy: sortBy.value,
           sortOrder: sortOrder.value,
           visitorType: visitorType.value || undefined,
+          followUpStatus: followUpStatus.value || undefined,
         },
       }) as any
       cards.value = result.items
@@ -63,6 +65,7 @@ export const useWelcomeCards = () => {
   const clearFilters = () => {
     search.value = ''
     visitorType.value = ''
+    followUpStatus.value = ''
     page.value = 1
     fetchCards()
   }
@@ -88,12 +91,19 @@ export const useWelcomeCards = () => {
     }, 400)
   })
 
+  // Filtro por estado de seguimiento
+  watch(followUpStatus, () => {
+    page.value = 1
+    fetchCards()
+  })
+
   return {
     cards,
     loading,
     error,
     search,
     visitorType,
+    followUpStatus,
     total,
     page,
     itemsPerPage,

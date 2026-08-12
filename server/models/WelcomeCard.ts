@@ -44,12 +44,27 @@ const welcomeCardSchema = new Schema(
 
     // Consentimiento
     acceptsDataPolicy: { type: String, enum: ['yes', 'no'] },
+
+    // ===== Seguimiento =====
+    // Estado actual del seguimiento después de la tarjeta de conexión
+    followUpStatus: {
+      type: String,
+      enum: ['not_started', 'active', 'no_interested', 'stopped'],
+      default: 'not_started',
+    },
+    followUpStoppedAt: { type: Date }, // cuándo se detuvo (no interesado o manual)
+    followUpStoppedReason: { type: String, trim: true }, // motivo si se detuvo manualmente
+    connectionEvent: { type: Schema.Types.ObjectId, ref: 'Event' }, // último evento de conexión al que fue invitado
+    connectionEventInvitedAt: { type: Date }, // cuándo se le invitó
   },
   { timestamps: true }
 );
 
 // Índice compuesto para acelerar la búsqueda de tarjetas por evento (listado en detalle del evento)
 welcomeCardSchema.index({ event: 1, createdAt: -1 });
+
+// Índice para filtrar tarjetas por estado de seguimiento + antigüedad
+welcomeCardSchema.index({ followUpStatus: 1, createdAt: -1 });
 
 welcomeCardSchema.methods.toJSON = function () {
   const obj = this.toObject();
