@@ -3,6 +3,7 @@ import { Course } from '~~/server/models/Course'
 import { CourseSession } from '~~/server/models/CourseSession'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const createSessionSchema = z.object({
   date: z.string().min(1, 'La fecha es requerida'),
@@ -38,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
   const session = await CourseSession.create({
     course: course._id,
-    date: new Date(date),
+    date: parseDateOnly(date),
     topic,
     location,
   })

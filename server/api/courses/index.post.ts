@@ -3,6 +3,7 @@ import { Course } from '~~/server/models/Course'
 import { Ministry } from '~~/server/models/Ministry'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const createCourseSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido'),
@@ -40,8 +41,8 @@ export default defineEventHandler(async (event) => {
   const course = await Course.create({
     name,
     description,
-    startDate: startDate ? new Date(startDate) : undefined,
-    endDate: endDate ? new Date(endDate) : undefined,
+    startDate: parseDateOnly(startDate),
+    endDate: parseDateOnly(endDate),
     ministry: ministryId || undefined,
     status: status ?? 'draft',
   })

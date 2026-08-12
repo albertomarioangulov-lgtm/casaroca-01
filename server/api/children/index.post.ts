@@ -3,6 +3,7 @@ import { Child } from '~~/server/models/Child'
 import { Caregiver } from '~~/server/models/Caregiver'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const createChildSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido'),
@@ -53,7 +54,7 @@ export default defineEventHandler(async (event) => {
 
   const child = await Child.create({
     name,
-    birthDate: birthDate ? new Date(birthDate) : undefined,
+    birthDate: parseDateOnly(birthDate),
     caregivers: caregiversData,
   })
 

@@ -3,6 +3,7 @@ import { Family } from '~~/server/models/Family'
 import { Person } from '~~/server/models/Person'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const memberInputSchema = z.object({
   personId: z.string().optional(),
@@ -59,7 +60,7 @@ export default defineEventHandler(async (event) => {
         }
         const newPerson = await Person.create({
           name: member.name,
-          birthDate: member.birthDate ? new Date(member.birthDate) : undefined,
+          birthDate: parseDateOnly(member.birthDate),
           phone: member.phone || undefined,
           email: member.email || undefined,
           gender: member.gender,

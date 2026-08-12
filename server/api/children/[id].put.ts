@@ -3,6 +3,7 @@ import { Child } from '~~/server/models/Child'
 import { Caregiver } from '~~/server/models/Caregiver'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const updateChildSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').optional(),
@@ -39,7 +40,7 @@ export default defineEventHandler(async (event) => {
   const updateData: Record<string, any> = {}
   if (result.data.name !== undefined) updateData.name = result.data.name
   if (result.data.birthDate !== undefined) {
-    updateData.birthDate = result.data.birthDate ? new Date(result.data.birthDate) : null
+    updateData.birthDate = result.data.birthDate ? parseDateOnly(result.data.birthDate) : null
   }
   if (result.data.caregivers !== undefined) {
     const caregiversData = []

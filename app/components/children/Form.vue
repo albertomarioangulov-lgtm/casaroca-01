@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { childFormSchema } from '~/composables/children/useChildForm'
 import { useChildUI } from '~/composables/children/useChildUI'
-import { formatDateInput } from '~/utils/dates'
+import { formatDateInput, toDateInputValue } from '~/utils/dates'
 
 const emit = defineEmits<{
   (e: 'saved'): void
@@ -31,7 +31,7 @@ const form = reactive({
 watch(selectedChild, (newChild) => {
   if (newChild) {
     form.name = newChild.name || ''
-    form.birthDate = newChild.birthDate ? (new Date(newChild.birthDate).toISOString().split('T')[0] ?? '') : ''
+    form.birthDate = toDateInputValue(newChild.birthDate)
   } else {
     form.name = ''
     form.birthDate = ''
@@ -99,6 +99,8 @@ const submit = async () => {
               <v-date-input
                 v-model="form.birthDate"
                 label="Fecha de nacimiento"
+                value-format="YYYY-MM-DD"
+                view-mode="year"
                 hint="Opcional. Se usa para calcular la edad"
                 persistent-hint
               />

@@ -3,6 +3,7 @@ import { Course } from '~~/server/models/Course'
 import { Ministry } from '~~/server/models/Ministry'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const updateCourseSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').optional(),
@@ -38,7 +39,7 @@ export default defineEventHandler(async (event) => {
   }
   for (const field of ['startDate', 'endDate']) {
     if (field in updateData) {
-      updateData[field] = updateData[field] ? new Date(updateData[field]) : undefined
+      updateData[field] = updateData[field] ? parseDateOnly(updateData[field]) : undefined
     }
   }
   if ('ministryId' in updateData) {

@@ -5,6 +5,7 @@ import { Event } from '~~/server/models/Event'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
 import { CHURCH_CAMPUSES, AFFINITY_GROUPS, FOLLOW_UP_INTERESTS, REGISTRATION_ORIGINS, VISIT_MOTIVATIONS } from '~~/shared/welcomeCard'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const campusValues = CHURCH_CAMPUSES as readonly string[]
 const affinityValues = AFFINITY_GROUPS.map(g => g.value)
@@ -98,7 +99,7 @@ export default defineEventHandler(async (event) => {
         name: data.name,
         email: data.email || undefined,
         phone: data.phone || undefined,
-        membershipDate: data.registrationDate ? new Date(data.registrationDate) : new Date(),
+        membershipDate: data.registrationDate ? parseDateOnly(data.registrationDate) : new Date(),
       })
     }
   }
@@ -122,7 +123,7 @@ export default defineEventHandler(async (event) => {
       email: data.email || person?.email || '',
     },
     event: data.eventId || undefined,
-    registrationDate: data.registrationDate ? new Date(data.registrationDate) : new Date(),
+    registrationDate: data.registrationDate ? parseDateOnly(data.registrationDate) : new Date(),
     visitorType: data.visitorType,
     name: data.name,
     email: data.email || undefined,

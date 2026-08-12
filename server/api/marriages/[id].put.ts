@@ -3,6 +3,7 @@ import { Marriage } from '~~/server/models/Marriage'
 import { Person } from '~~/server/models/Person'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const updateMarriageSchema = z.object({
   status: z.enum(['active', 'divorced', 'widowed']),
@@ -36,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const updateData: Record<string, any> = {}
   if (result.data.status) updateData.status = result.data.status
   if ('marriageDate' in result.data) {
-    updateData.marriageDate = result.data.marriageDate ? new Date(result.data.marriageDate) : undefined
+    updateData.marriageDate = result.data.marriageDate ? parseDateOnly(result.data.marriageDate) : undefined
   }
 
   const updated = await Marriage.findByIdAndUpdate(marriage._id, updateData, { new: true }).lean()

@@ -3,6 +3,7 @@ import { WelcomeCard } from '~~/server/models/WelcomeCard'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
 import { CHURCH_CAMPUSES, AFFINITY_GROUPS, FOLLOW_UP_INTERESTS, REGISTRATION_ORIGINS } from '~~/shared/welcomeCard'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const campusValues = CHURCH_CAMPUSES as readonly string[]
 const affinityValues = AFFINITY_GROUPS.map(g => g.value)
@@ -56,7 +57,7 @@ export default defineEventHandler(async (event) => {
   }
   if ('registrationDate' in updateData) {
     if (updateData.registrationDate) {
-      updateData.registrationDate = new Date(updateData.registrationDate)
+      updateData.registrationDate = parseDateOnly(updateData.registrationDate)
     } else {
       updateData.registrationDate = undefined
     }

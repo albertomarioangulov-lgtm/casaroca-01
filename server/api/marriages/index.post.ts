@@ -3,6 +3,7 @@ import { Marriage } from '~~/server/models/Marriage'
 import { Person } from '~~/server/models/Person'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const createMarriageSchema = z.object({
   spouse1Id: z.string().min(1, 'El cónyuge 1 es requerido'),
@@ -54,7 +55,7 @@ export default defineEventHandler(async (event) => {
   const marriage = await Marriage.create({
     spouse1: spouse1._id,
     spouse2: spouse2._id,
-    marriageDate: marriageDate ? new Date(marriageDate) : undefined,
+    marriageDate: parseDateOnly(marriageDate),
     status: 'active',
   })
 
