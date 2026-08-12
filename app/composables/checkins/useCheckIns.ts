@@ -81,6 +81,32 @@ export const useCheckIns = () => {
     }
   }
 
+  // Marcar la entrada de una persona pre-inscrita (invitado) directamente
+  const checkInPerson = async (eventId: string, personId: string, wristbandNumber?: string) => {
+    error.value = ''
+    successMessage.value = ''
+    loading.value = true
+    try {
+      await $fetch('/api/checkins', {
+        method: 'POST',
+        body: {
+          eventId,
+          people: [{
+            personId,
+            wristbandNumber: wristbandNumber || undefined,
+          }],
+        },
+      })
+      successMessage.value = 'Entrada registrada correctamente'
+      return true
+    } catch (err: any) {
+      error.value = err?.data?.statusMessage || err?.message || 'Error al registrar la entrada'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
   const openCheckOut = (checkIn: Record<string, any>) => {
     selectedCheckIn.value = checkIn
     isCheckOutOpen.value = true
@@ -145,6 +171,7 @@ export const useCheckIns = () => {
     selectedCheckIn,
     fetchCheckIns,
     createCheckIn,
+    checkInPerson,
     openCheckOut,
     closeCheckOut,
     checkOut,

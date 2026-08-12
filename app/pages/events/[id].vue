@@ -48,18 +48,53 @@ const kidsError = ref('')
 const confirmDialog = ref(false)
 const welcomeCards = ref<Array<Record<string, any>>>([])
 const welcomeLoading = ref(false)
+// Invitados al evento de conexión (pre-inscripciones)
+const eventInvitations = ref<Array<Record<string, any>>>([])
+const invitationsLoading = ref(false)
+const checkInInvitedDialogOpen = ref(false)
+const selectedInvited = ref<Record<string, any> | null>(null)
 const checkInFormRef = ref<any>(null)
 const checkOutFormRef = ref<any>(null)
 
 // ===== Tabs de nivel evento (solo en el evento principal) =====
-// Tab 0: Evento principal (asistencia)
-// Tab 1..n: satélites (asistencia de cada ministerio)
-// Tab n+1: Tarjetas de Conexión (siempre del evento principal)
-const activeEventTab = ref<number>(0)
+// La selección activa se guarda por "kind" semántico ('main', 'child-<id>', 'invited', 'welcome')
+// para que al cargar las invitaciones (que reordenan los índices numéricos de los tabs),
+// la selección nunca se desplace a otro tab por error.
+const activeTabKind = ref<string>('main')
 
-const welcomeTabIndex = computed(() => childEvents.value.length + 1)
+// Tab de invitados: solo visible si el evento tiene pre-inscripciones.
+// Es genérico: funciona para cualquier tipo de evento con invitados.
+const showInvitedTab = computed(() => eventInvitations.value.length > 0)
 
-const isWelcomeTab = computed(() => activeEventTab.value === welcomeTabIndex.value)
+// Tab de tarjetas: solo visible si el evento recibe nuevos o ya hay tarjetas registradas
+const showWelcomeTab = computed(() => welcomeEnabled.value || welcomeCards.value.length > 0)
+
+// Mapa semántico kind -> índice numérico (Vuetify v-tabs usa valores numéricos)
+const eventTabKinds = computed(() => {
+  const kinds: Array<{ kind: string; value: number }> = [{ kind: 'main', value: 0 }]
+  childEvents.value.forEach((c: Record<string, any>, i: number) => {
+    kinds.push({ kind: `child-${c.id}`, value: i + 1 })
+  })
+  if (showInvitedTab.value) {
+    kinds.push({ kind: 'invited', value: childEvents.value.length + 1 })
+  }
+  if (showWelcomeTab.value) {
+    kinds.push({ kind: 'welcome', value: childEvents.value.length + (showInvitedTab.value ? 2 : 1) })
+  }
+  return kinds
+})
+
+// Valor numérico activo, sincronizado bidireccionalmente con activeTabKind
+const activeEventTab = computed<number>({
+  get: () => eventTabKinds.value.find((t) => t.kind === activeTabKind.value)?.value ?? 0,
+  set: (value: number) => {
+    const kind = eventTabKinds.value.find((t) => t.value === value)?.kind
+    if (kind) activeTabKind.value = kind
+  },
+})
+
+const isWelcomeTab = computed(() => activeTabKind.value === 'welcome')
+const isInvitedTab = computed(() => activeTabKind.value === 'invited')
 
 // ¿La página actual es un evento principal (muestra tabs de ministerios)?
 const showEventTabs = computed(() => isParentEvent.value)
@@ -142,13 +177,25 @@ const activeStatusLabel = computed(() => {
 const fetchWelcomeCards = async () => {
   welcomeLoading.value = true
   try {
-    // Endpoint ligero e indexado: solo los campos de la tabla de este evento
     const data = await $fetch(`/api/events/${eventId}/welcome-cards`) as any
     welcomeCards.value = data?.items ?? []
   } catch {
     welcomeCards.value = []
   } finally {
     welcomeLoading.value = false
+  }
+}
+
+// Cargar los invitados al evento de conexión (pre-inscripciones)
+const fetchEventInvitations = async () => {
+  invitationsLoading.value = true
+  try {
+    const data = await $fetch(`/api/events/${eventId}/enrollments`).catch(() => null) as any
+    eventInvitations.value = data?.items ?? []
+  } catch {
+    eventInvitations.value = []
+  } finally {
+    invitationsLoading.value = false
   }
 }
 
@@ -167,6 +214,11 @@ const motivationSummary = (values: string[] | undefined): string => {
 const formatDateShort = (date: string | null | undefined): string => {
   if (!date) return '—'
   return new Date(date).toLocaleDateString()
+}
+
+const formatTime = (date: string | null | undefined): string => {
+  if (!date) return '—'
+  return new Date(date).toLocaleTimeString()
 }
 
 const fetchEvent = async () => {
@@ -227,7 +279,6 @@ const goToParentEvent = () => {
 }
 
 const goToMainEventTab = () => {
-  // En la vista de un satélite (sin tabs), navegar al padre; en el tab de satélite, volver al tab principal
   if (!isParentEvent.value) {
     goToParentEvent()
     return
@@ -242,9 +293,8 @@ const pendingWelcomeTab = ref(false)
 const applyWelcomeTabIfRequested = () => {
   if (pendingWelcomeTab.value && childEvents.value.length >= 0) {
     pendingWelcomeTab.value = false
-    activeEventTab.value = welcomeTabIndex.value
+    activeTabKind.value = 'welcome'
     handleActiveEventTabChange()
-    // Limpiar el query para que no se re-aplique al cambiar de tab manualmente
     navigateTo(`/events/${eventId}`, { replace: true })
   }
 }
@@ -275,10 +325,12 @@ const handleActiveEventTabChange = () => {
   activeTab.value = 0
   search.value = ''
   statusFilter.value = ''
-  // Re-traer childEvents para actualizar los contadores de todos los tabs de satélites
   fetchEvent()
   if (isWelcomeTab.value) {
     fetchWelcomeCards()
+    fetchEventInvitations()
+  } else if (isInvitedTab.value) {
+    fetchEventInvitations()
   } else {
     fetchCheckIns(activeEventId.value)
   }
@@ -291,7 +343,6 @@ const checkInGroups = computed(() => {
   const groups = new Map<string, { name: string; index: number; minAge: number | null; maxAge: number | null; items: any[]; inside: number; out: number }>()
   const ungrouped = { name: 'Sin grupo', index: -1, minAge: null, maxAge: null, items: [] as any[], inside: 0, out: 0 }
 
-  // Pre-crear los salones configurados del ministerio (del evento activo)
   ;(activeEventAgeGroups.value || []).forEach((g: any, i: number) => {
     groups.set(`g${i}`, {
       name: g.name || `Grupo ${i + 1}`,
@@ -305,7 +356,6 @@ const checkInGroups = computed(() => {
   })
 
   for (const item of checkIns.value || []) {
-    // Usar el snapshot del check-in si existe, si no, calcular índice -1 (sin grupo)
     const hasSnapshot = item.ageGroupIndex !== undefined && item.ageGroupIndex >= 0
     const key = hasSnapshot ? `g${item.ageGroupIndex}` : 'ungrouped'
     const target = key === 'ungrouped' ? ungrouped : (groups.get(key) || {
@@ -331,9 +381,6 @@ const checkInGroups = computed(() => {
 const hasActiveSearch = computed(() => (search.value || '').trim().length > 0)
 
 // Auto-navegar al primer tab con items cuando el tab actual está vacío.
-// Esto evita que la tabla salga en blanco (por ejemplo, si los check-ins
-// están en "Sin grupo" o en otro salón). Si el tab actual tiene items,
-// se respeta la selección del usuario.
 watch(checkInGroups, (groups) => {
   const currentGroup = groups[activeTab.value]
   const currentHasItems = !!currentGroup && currentGroup.items.length > 0
@@ -376,7 +423,6 @@ const doActivate = async (activateChildren: boolean) => {
 }
 
 const activateEvent = () => {
-  // Solo el tab del evento principal puede confirmar activación en cascada
   if (activeEventTab.value === 0 && hasPendingChildren.value) {
     confirmDialog.value = true
   } else {
@@ -430,10 +476,24 @@ const handleOpenCheckOut = (checkIn: Record<string, any>) => {
   openCheckOut(checkIn)
 }
 
+// Abrir diálogo de entrada rápida para un invitado
+const openInvitedCheckIn = (invited: Record<string, any>) => {
+  if (!invited?.personId) return
+  selectedInvited.value = invited
+  checkInInvitedDialogOpen.value = true
+}
+
+// Tras marcar entrada de un invitado, refrescar invitados y asistencia
+const handleInvitedCheckInSaved = () => {
+  fetchEventInvitations()
+  fetchCheckIns(eventId)
+  fetchEvent()
+}
+
 let searchWatchTimeout: ReturnType<typeof setTimeout> | null = null
 
 watch(search, () => {
-  if (isWelcomeTab.value) return
+  if (isWelcomeTab.value || isInvitedTab.value) return
   if (searchWatchTimeout) clearTimeout(searchWatchTimeout)
   searchWatchTimeout = setTimeout(() => {
     fetchCheckIns(activeEventId.value)
@@ -441,7 +501,7 @@ watch(search, () => {
 })
 
 watch(statusFilter, () => {
-  if (isWelcomeTab.value) return
+  if (isWelcomeTab.value || isInvitedTab.value) return
   fetchCheckIns(activeEventId.value)
 })
 
@@ -453,6 +513,7 @@ onMounted(() => {
     fetchCheckIns(activeEventId.value)
     if (can(PERMISSIONS.WELCOME_CARDS_READ)) {
       fetchWelcomeCards()
+      fetchEventInvitations()
     }
   }
 })
@@ -507,7 +568,7 @@ onBeforeUnmount(() => {
       <!-- Acciones en escritorio: botones con texto -->
       <template v-if="!mobile">
         <v-btn
-          v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab"
+          v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab && !isInvitedTab"
           color="green"
           prepend-icon="mdi-play-circle-outline"
           :loading="activating"
@@ -517,7 +578,7 @@ onBeforeUnmount(() => {
           Activar evento
         </v-btn>
         <v-btn
-          v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab)"
+          v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab) && !isInvitedTab"
           color="primary"
           prepend-icon="mdi-card-account-details-outline"
           :disabled="!isActiveEvent"
@@ -526,7 +587,7 @@ onBeforeUnmount(() => {
           Registrar nuevo
         </v-btn>
         <v-btn
-          v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab"
+          v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab && !isInvitedTab"
           color="primary"
           prepend-icon="mdi-clipboard-arrow-left"
           :disabled="!isActiveEvent"
@@ -541,7 +602,7 @@ onBeforeUnmount(() => {
         <v-tooltip text="Activar evento" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab"
+              v-if="!isActiveEvent && can(PERMISSIONS.EVENTS_UPDATE) && activeEventStatus === 'scheduled' && !isWelcomeTab && !isInvitedTab"
               v-bind="props"
               color="green"
               icon="mdi-play-circle-outline"
@@ -554,7 +615,7 @@ onBeforeUnmount(() => {
         <v-tooltip text="Registrar nuevo" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab)"
+              v-if="can(PERMISSIONS.WELCOME_CARDS_CREATE) && welcomeEnabled && !parentEventId && (activeEventTab === 0 || isWelcomeTab) && !isInvitedTab"
               v-bind="props"
               color="primary"
               icon="mdi-card-account-details-outline"
@@ -566,7 +627,7 @@ onBeforeUnmount(() => {
         <v-tooltip text="Registrar entrada" location="bottom">
           <template #activator="{ props }">
             <v-btn
-              v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab"
+              v-if="can(PERMISSIONS.CHECKINS_CREATE) && !isWelcomeTab && !isInvitedTab"
               v-bind="props"
               color="primary"
               icon="mdi-clipboard-arrow-left"
@@ -578,7 +639,7 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Tabs de nivel evento: ministerios que atienden + tarjetas de conexión -->
+    <!-- Tabs de nivel evento: ministerios que atienden + invitados + tarjetas de conexión -->
     <div v-if="showEventTabs" class="d-flex align-center flex-wrap mb-2">
       <v-tabs
         v-model="activeEventTab"
@@ -614,7 +675,21 @@ onBeforeUnmount(() => {
             </v-chip>
           </template>
         </v-tab>
-        <v-tab :value="welcomeTabIndex" class="min-w-tab">
+        <v-tab
+          v-if="showInvitedTab"
+          :value="childEvents.length + 1"
+          class="min-w-tab"
+        >
+          <span>Invitados</span>
+          <v-chip v-if="!mobile" size="x-small" class="ml-2" color="green" variant="tonal">
+            {{ eventInvitations.length }}
+          </v-chip>
+        </v-tab>
+        <v-tab
+          v-if="showWelcomeTab"
+          :value="childEvents.length + (showInvitedTab ? 2 : 1)"
+          class="min-w-tab"
+        >
           <span>Tarjetas de Conexión</span>
           <v-chip v-if="!mobile" size="x-small" class="ml-2" color="primary" variant="tonal">
             {{ welcomeCards.length }}
@@ -640,7 +715,7 @@ onBeforeUnmount(() => {
 
     <!-- Aviso si el evento activo no está activo -->
     <v-alert
-      v-if="eventLoaded && !isActiveEvent && !isWelcomeTab"
+      v-if="eventLoaded && !isActiveEvent && !isWelcomeTab && !isInvitedTab"
       transition="false"
       type="warning"
       variant="tonal"
@@ -674,8 +749,8 @@ onBeforeUnmount(() => {
       {{ successMessage }}
     </v-alert>
 
-    <!-- ===== Asistencia del evento activo (se oculta en el tab de Tarjetas) ===== -->
-    <template v-if="!isWelcomeTab">
+    <!-- ===== Asistencia del evento activo (se oculta en los tabs de Invitados y Tarjetas) ===== -->
+    <template v-if="!isWelcomeTab && !isInvitedTab">
       <div v-if="activeEventTrackCheckOut" class="d-flex mb-3">
         <v-chip class="mr-2" color="green" variant="tonal">
           Dentro: {{ totalInside }}
@@ -952,6 +1027,131 @@ onBeforeUnmount(() => {
       </v-data-table-server>
     </template>
 
+    <!-- ===== Invitados al evento (tab de nivel evento) ===== -->
+    <v-card
+      v-if="isInvitedTab && can(PERMISSIONS.CHECKINS_READ)"
+      variant="outlined"
+      class="mt-4"
+    >
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Invitados al evento ({{ eventInvitations.length }})
+      </v-card-title>
+      <v-card-text>
+        <!-- Cards para móvil -->
+        <template v-if="mobile">
+          <div v-if="invitationsLoading" class="text-center py-6 text-medium-emphasis">
+            Cargando invitados...
+          </div>
+          <template v-else>
+            <v-card
+              v-for="inv in eventInvitations"
+              :key="inv.id"
+              class="mb-2"
+              variant="outlined"
+            >
+              <v-card-item>
+                <div class="d-flex align-center">
+                  <div class="flex-grow-1">
+                    <div class="font-weight-bold text-subtitle-2">{{ inv.personName }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      Pre-inscrito el {{ formatDateShort(inv.registeredAt) }}
+                    </div>
+                  </div>
+                  <v-chip
+                    v-if="inv.checkedIn"
+                    size="small"
+                    color="green"
+                    variant="tonal"
+                  >
+                    Entró {{ formatTime(inv.checkInTime) }}
+                  </v-chip>
+                  <v-btn
+                    v-else-if="can(PERMISSIONS.CHECKINS_CREATE)"
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-clipboard-arrow-left"
+                    :disabled="!isActiveEvent"
+                    @click="openInvitedCheckIn(inv)"
+                  >
+                    Marcar entrada
+                  </v-btn>
+                </div>
+                <div v-if="inv.notes" class="text-caption text-medium-emphasis mt-1">
+                  {{ inv.notes }}
+                </div>
+              </v-card-item>
+            </v-card>
+            <div v-if="!eventInvitations.length" class="text-center py-6">
+              No hay invitados pre-inscritos a este evento.
+            </div>
+          </template>
+        </template>
+
+        <!-- Tabla para escritorio -->
+        <v-data-table
+          v-else
+          :headers="[
+            { title: 'Persona', key: 'personName', sortable: true },
+            { title: 'Teléfono', key: 'personPhone', sortable: false },
+            { title: 'Pre-inscrito', key: 'registeredAt', sortable: true },
+            { title: 'Entrada', key: 'checkedIn', sortable: false },
+            { title: 'Estado', key: 'status', sortable: false },
+          ]"
+          :items="eventInvitations"
+          item-key="id"
+          :loading="invitationsLoading"
+          density="compact"
+          :items-per-page="10"
+        >
+          <template #item.personPhone="{ item }">
+            {{ item.personPhone || '—' }}
+          </template>
+          <template #item.registeredAt="{ item }">
+            {{ formatDateShort(item.registeredAt) }}
+          </template>
+          <template #item.checkedIn="{ item }">
+            <v-chip
+              v-if="item.checkedIn"
+              size="small"
+              color="green"
+              variant="tonal"
+            >
+              Entró {{ formatTime(item.checkInTime) }}
+            </v-chip>
+            <v-btn
+              v-else-if="can(PERMISSIONS.CHECKINS_CREATE)"
+              size="small"
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-clipboard-arrow-left"
+              :disabled="!isActiveEvent"
+              @click="openInvitedCheckIn(item)"
+            >
+              Marcar entrada
+            </v-btn>
+          </template>
+          <template #item.status="{ item }">
+            <v-chip
+              size="small"
+              :color="item.status === 'registered' ? 'green' : 'grey'"
+              variant="tonal"
+            >
+              {{ item.status === 'registered' ? 'Invitado' : 'Cancelado' }}
+            </v-chip>
+          </template>
+          <template #no-data>
+            <div class="text-center py-6">
+              No hay invitados pre-inscritos a este evento.
+            </div>
+          </template>
+          <template #loading>
+            Cargando invitados...
+          </template>
+        </v-data-table>
+      </v-card-text>
+    </v-card>
+
     <!-- ===== Tarjetas de Conexión del evento principal (tab único) ===== -->
     <v-card
       v-if="isWelcomeTab && can(PERMISSIONS.WELCOME_CARDS_READ)"
@@ -1103,6 +1303,13 @@ onBeforeUnmount(() => {
       :is-kids-event="activeEventIsKids"
       :require-wristband="activeEventRequireWristband"
       @saved="handleCheckOutSaved"
+    />
+    <CheckinsCheckInInvitedDialog
+      v-model="checkInInvitedDialogOpen"
+      :event-id="eventId"
+      :require-wristband="eventRequireWristband"
+      :invited="selectedInvited"
+      @saved="handleInvitedCheckInSaved"
     />
 
     <!-- Confirmación de activación con ministerios vinculados -->
