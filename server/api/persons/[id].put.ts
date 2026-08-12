@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { Person } from '~~/server/models/Person'
 import { PERMISSIONS } from '~~/shared/permissions'
 import { requirePermission } from '~~/server/utils/permissions'
+import { parseDateOnly } from '~~/server/utils/dates'
 
 const updatePersonSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').optional(),
@@ -40,7 +41,7 @@ export default defineEventHandler(async (event) => {
   // undefined sería ignorado y no borraría el valor existente)
   for (const field of ['birthDate', 'membershipDate', 'baptismDate']) {
     if (field in updateData) {
-      updateData[field] = updateData[field] ? new Date(updateData[field]) : null
+      updateData[field] = updateData[field] ? parseDateOnly(updateData[field]) : null
     }
   }
   for (const field of ['phone', 'email', 'address']) {

@@ -3,15 +3,16 @@
 // ============================================================
 import { ref } from 'vue'
 import { z } from 'zod'
+import { toDateInputValue } from '~/utils/dates'
 
 export const personFormSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido'),
   birthDate: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email('Correo inválido').optional().or(z.literal('')),
-  gender: z.enum(['male', 'female']).optional(),
+  gender: z.enum(['male', 'female']).optional().or(z.literal('')),
   address: z.string().optional(),
-  maritalStatus: z.enum(['single', 'married', 'divorced', 'widowed']).optional(),
+  maritalStatus: z.enum(['single', 'married', 'divorced', 'widowed']).optional().or(z.literal('')),
   membershipDate: z.string().optional(),
   baptismDate: z.string().optional(),
 })
@@ -51,14 +52,6 @@ export const usePersonForm = () => {
     }
 
     return true
-  }
-
-  // Convierte fechas ISO a yyyy-mm-dd para campos date
-  const toDateInputValue = (date: Date | string | null | undefined): string => {
-    if (!date) return ''
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    return d.toISOString().split('T')[0] ?? ''
   }
 
   const loadPerson = async (personId: string): Promise<Record<string, any> | null> => {

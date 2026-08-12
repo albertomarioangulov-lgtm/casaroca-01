@@ -3,9 +3,10 @@
 // Patrón UsersForm: lee estado global de usePersonUI (useState) y emite 'saved'.
 
 import { personFormSchema } from '~/composables/persons/usePersonForm'
+import { formatDateInput, toDateInputValue } from '~/utils/dates'
 
 const { isFormOpen, selectedPerson, closeForm } = usePersonUI()
-const { saving, submitError, fieldErrors, savePerson, toDateInputValue } = usePersonForm()
+const { saving, submitError, fieldErrors, savePerson } = usePersonForm()
 
 const emit = defineEmits<{
   (e: 'saved'): void
@@ -13,16 +14,18 @@ const emit = defineEmits<{
 
 const isEditing = computed(() => !!selectedPerson.value)
 
+const formRef = ref<any>(null)
+
 const form = ref<Record<string, any>>({
   name: '',
-  birthDate: '',
+  birthDate: null,
   phone: '',
   email: '',
   gender: '',
   address: '',
   maritalStatus: '',
-  membershipDate: '',
-  baptismDate: '',
+  membershipDate: null,
+  baptismDate: null,
 })
 
 type VuetifyRule = (v: any) => string | boolean
@@ -46,8 +49,8 @@ const rules: Record<string, VuetifyRule[]> = {
 
 const resetForm = () => {
   form.value = {
-    name: '', birthDate: '', phone: '', email: '', gender: '',
-    address: '', maritalStatus: '', membershipDate: '', baptismDate: '',
+    name: '', birthDate: null, phone: '', email: '', gender: '',
+    address: '', maritalStatus: '', membershipDate: null, baptismDate: null,
   }
 }
 
@@ -62,20 +65,36 @@ watch(isFormOpen, (open) => {
   if (p) {
     form.value = {
       name: p.name ?? '',
-      birthDate: toDateInputValue(p.birthDate),
+      birthDate: toDateInputValue(p.birthDate) || null,
       phone: p.phone ?? '',
       email: p.email ?? '',
       gender: p.gender ?? '',
       address: p.address ?? '',
       maritalStatus: p.maritalStatus ?? '',
-      membershipDate: toDateInputValue(p.membershipDate),
-      baptismDate: toDateInputValue(p.baptismDate),
+      membershipDate: toDateInputValue(p.membershipDate) || null,
+      baptismDate: toDateInputValue(p.baptismDate) || null,
     }
   }
 })
 
 const save = async () => {
-  const success = await savePerson(form.value, selectedPerson.value?.id ?? undefined)
+  if (formRef.value) {
+    const { valid } = await formRef.value.validate()
+    if (!valid) return
+  }
+
+  // v-date-input devuelve Date al seleccionar y null al borrar;
+  // formatDateInput convierte Date → 'YYYY-MM-DD' y vacío → ''.
+  // gender/maritalStatus vacíos → undefined para no enviar '' a la API.
+  const payload = {
+    ...form.value,
+    birthDate: formatDateInput(form.value.birthDate) || undefined,
+    membershipDate: formatDateInput(form.value.membershipDate) || undefined,
+    baptismDate: formatDateInput(form.value.baptismDate) || undefined,
+    gender: form.value.gender || undefined,
+    maritalStatus: form.value.maritalStatus || undefined,
+  }
+  const success = await savePerson(payload, selectedPerson.value?.id ?? undefined)
   if (success) {
     emit('saved')
     closeForm()
@@ -100,13 +119,19 @@ const save = async () => {
       </v-card-title>
       <v-card-text>
         <v-alert v-if="submitError" type="error" class="mb-3" :text="submitError" />
-        <v-form @submit.prevent="save">
+        <v-form ref="formRef" @submit.prevent="save">
           <v-row>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.name" label="Nombre completo" required :rules="rules.name" hide-details />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.birthDate" label="Fecha de nacimiento" type="date" hide-details />
+              <v-date-input
+                v-model="form.birthDate"
+                label="Fecha de nacimiento"
+                value-format="YYYY-MM-DD"
+                view-mode="year"
+                hide-details
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.phone" label="Teléfono" hide-details />
@@ -148,21 +173,33 @@ const save = async () => {
               <v-text-field v-model="form.address" label="Dirección" hide-details />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.membershipDate" label="Fecha de membresía (ingreso)" type="date" hide-details />
+              <v-date-input
+                v-model="form.membershipDate"
+                label="Fecha de membresía (ingreso)"
+                value-format="YYYY-MM-DD"
+                view-mode="year"
+                hide-details
+              />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.baptismDate" label="Fecha de bautismo" type="date" hide-details />
+              <v-date-input
+                v-model="form.baptismDate"
+                label="Fecha de bautismo"
+                value-format="YYYY-MM-DD"
+                view-mode="year"
+                hide-details
+              />
             </v-col>
           </v-row>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" @click="closeForm">Cancelar</v-btn>
+            <v-btn color="primary" type="submit" :loading="saving">
+              {{ isEditing ? 'Guardar cambios' : 'Crear persona' }}
+            </v-btn>
+          </v-card-actions>
         </v-form>
       </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="closeForm">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="save">
-          {{ isEditing ? 'Guardar cambios' : 'Crear persona' }}
-        </v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
